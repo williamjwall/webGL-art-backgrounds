@@ -1,5 +1,17 @@
 (function() {
+    // Create a namespace for this visualization to avoid global conflicts
+    window.GraphNetwork = {
+        active: false,
+        animationId: null,
+        init: init,
+        stop: stopAnimation,
+        nodes: [],
+        edges: []
+    };
+    
     const canvas = document.getElementById('graph-canvas');
+    if (!canvas) return; // Exit if canvas doesn't exist
+    
     const ctx = canvas.getContext('2d');
     
     // Set canvas to cover the entire window
@@ -12,8 +24,8 @@
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
     
-    const nodes = [];
-    const edges = [];
+    const nodes = window.GraphNetwork.nodes;
+    const edges = window.GraphNetwork.edges;
     const numNodes = 150; // More nodes for better coverage
     const maxDistance = 150;
     
@@ -31,6 +43,9 @@
     
     // Add nodes on click - create a burst effect
     canvas.addEventListener('click', () => {
+        // Only handle clicks if active
+        if (!window.GraphNetwork.active) return;
+        
         // Create a burst of nodes
         const burstSize = 12;
         const clickX = mousePosition.x;
@@ -57,12 +72,23 @@
         }
     });
     
+    // Only initialize if this is the active canvas
+    if (canvas.classList.contains('active')) {
+        init();
+    }
+    
     function init() {
         nodes.length = 0;
         edges.length = 0;
         
         for (let i = 0; i < numNodes; i++) {
             nodes.push(createNode());
+        }
+        
+        // Start animation only if not already running
+        if (!window.GraphNetwork.active) {
+            window.GraphNetwork.active = true;
+            animate();
         }
     }
     
@@ -79,6 +105,9 @@
     }
     
     function update() {
+        // Skip updates if not active
+        if (!window.GraphNetwork.active) return;
+        
         // Get flow direction - slowly changing over time
         const time = Date.now() * 0.0001;
         const flowAngleX = Math.sin(time * 0.3) * 0.01; 
@@ -131,6 +160,9 @@
     }
     
     function draw() {
+        // Skip drawing if not active
+        if (!window.GraphNetwork.active) return;
+        
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
         // Very subtle background gradient
@@ -161,18 +193,31 @@
     }
     
     function animate() {
+        // If not active, don't continue animation
+        if (!window.GraphNetwork.active) return;
+        
         update();
         draw();
-        requestAnimationFrame(animate);
+        window.GraphNetwork.animationId = requestAnimationFrame(animate);
     }
     
-    // Initialize and start animation
-    init();
-    animate();
+    function stopAnimation() {
+        window.GraphNetwork.active = false;
+        if (window.GraphNetwork.animationId) {
+            cancelAnimationFrame(window.GraphNetwork.animationId);
+            window.GraphNetwork.animationId = null;
+        }
+    }
     
-    // Reinitialize when window is resized
+    // Reinitialize when window is resized, but throttle to avoid memory spikes
+    let resizeTimeout;
     window.addEventListener('resize', () => {
-        resizeCanvas();
-        init();
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            resizeCanvas();
+            if (window.GraphNetwork.active) {
+                init();
+            }
+        }, 500);
     });
 })(); 

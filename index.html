@@ -57,6 +57,16 @@
         .btn:hover {
             background-color: rgba(0, 136, 255, 0.3);
         }
+        .visualization-title {
+            position: fixed;
+            top: 20px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            font-size: 24px;
+            z-index: 100;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -69,67 +79,198 @@
         <canvas id="lifesarrival-canvas"></canvas>
         <canvas id="phylogenetic-canvas"></canvas>
         
+        <div class="visualization-title" id="vis-title">Graph Network</div>
+        
         <div class="controls">
             <button class="btn" id="prev-btn">Previous</button>
             <button class="btn" id="next-btn">Next</button>
         </div>
     </div>
 
-    <script src="js/triangles.js"></script>
-    <script src="js/plankton.js"></script>
-    <script src="js/ants.js"></script>
-    <script src="js/blobs.js"></script>
-    <script src="js/graph.js"></script>
-    <script src="js/lifesarrival.js"></script>
-    <script src="js/phylogenetic_trees.js"></script>
-    
+    <!-- Script loader and controller -->
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const visualizations = [
-                { id: 'triangles-canvas' },
-                { id: 'plankton-canvas' },
-                { id: 'graph-canvas' },
-                { id: 'lifesarrival-canvas' },
-                { id: 'phylogenetic-canvas' }
-            ];
-            
-            let currentIndex = 2; // Start with graph-canvas (index 2)
-            
-            function updateActiveVisualization() {
-                // Hide all canvases
-                document.querySelectorAll('canvas').forEach(canvas => {
-                    canvas.classList.remove('active');
-                });
+        // VisualizationManager handles loading and unloading visualizations
+        class VisualizationManager {
+            constructor() {
+                this.visualizations = [
+                    { 
+                        id: 'triangles-canvas', 
+                        title: 'Triangles', 
+                        script: 'js/triangles.js',
+                        instance: null,
+                        loaded: false
+                    },
+                    { 
+                        id: 'plankton-canvas', 
+                        title: 'Plankton', 
+                        script: 'js/plankton.js',
+                        instance: null,
+                        loaded: false
+                    },
+                    { 
+                        id: 'graph-canvas', 
+                        title: 'Graph Network', 
+                        script: 'js/graph.js',
+                        instance: null,
+                        loaded: false 
+                    },
+                    { 
+                        id: 'lifesarrival-canvas', 
+                        title: 'Language Coming to Life', 
+                        script: 'js/lifesarrival.js',
+                        instance: null,
+                        loaded: false
+                    },
+                    { 
+                        id: 'phylogenetic-canvas', 
+                        title: 'Phylogenetic Trees', 
+                        script: 'js/phylogenetic_trees.js',
+                        instance: null,
+                        loaded: false
+                    }
+                ];
                 
-                // Show current canvas
-                const currentVis = visualizations[currentIndex];
-                document.getElementById(currentVis.id).classList.add('active');
+                this.currentIndex = 2; // Start with graph-canvas (index 2)
+                this.activeAnimation = null;
+                this.titleElement = document.getElementById('vis-title');
+                
+                // Initialize event listeners
+                this.initEventListeners();
+                
+                // Load first visualization
+                this.loadVisualization(this.currentIndex);
             }
             
-            // Event listeners for navigation buttons
-            document.getElementById('prev-btn').addEventListener('click', () => {
-                currentIndex = (currentIndex - 1 + visualizations.length) % visualizations.length;
-                updateActiveVisualization();
-            });
+            initEventListeners() {
+                // Event listeners for navigation buttons
+                document.getElementById('prev-btn').addEventListener('click', () => {
+                    this.navigateToPrevious();
+                });
+                
+                document.getElementById('next-btn').addEventListener('click', () => {
+                    this.navigateToNext();
+                });
+                
+                // Keyboard navigation
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'ArrowLeft') {
+                        this.navigateToPrevious();
+                    } else if (e.key === 'ArrowRight') {
+                        this.navigateToNext();
+                    }
+                });
+            }
             
-            document.getElementById('next-btn').addEventListener('click', () => {
-                currentIndex = (currentIndex + 1) % visualizations.length;
-                updateActiveVisualization();
-            });
+            navigateToPrevious() {
+                const newIndex = (this.currentIndex - 1 + this.visualizations.length) % this.visualizations.length;
+                this.unloadCurrentVisualization();
+                this.currentIndex = newIndex;
+                this.loadVisualization(this.currentIndex);
+            }
             
-            // Keyboard navigation
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'ArrowLeft') {
-                    currentIndex = (currentIndex - 1 + visualizations.length) % visualizations.length;
-                    updateActiveVisualization();
-                } else if (e.key === 'ArrowRight') {
-                    currentIndex = (currentIndex + 1) % visualizations.length;
-                    updateActiveVisualization();
+            navigateToNext() {
+                const newIndex = (this.currentIndex + 1) % this.visualizations.length;
+                this.unloadCurrentVisualization();
+                this.currentIndex = newIndex;
+                this.loadVisualization(this.currentIndex);
+            }
+            
+            unloadCurrentVisualization() {
+                // Hide current canvas
+                const currentVis = this.visualizations[this.currentIndex];
+                document.getElementById(currentVis.id).classList.remove('active');
+                
+                // Stop animation if running
+                if (this.activeAnimation) {
+                    cancelAnimationFrame(this.activeAnimation);
+                    this.activeAnimation = null;
                 }
-            });
+                
+                // Call the stop method on the current visualization if it exists
+                const visNamespace = this.getVisualizationNamespace(currentVis.id);
+                if (visNamespace && typeof visNamespace.stop === 'function') {
+                    visNamespace.stop();
+                }
+            }
             
-            // Initialize with the graph visualization
-            updateActiveVisualization();
+            loadVisualization(index) {
+                const visualization = this.visualizations[index];
+                
+                // Update title
+                this.titleElement.textContent = visualization.title;
+                
+                // Show canvas
+                document.getElementById(visualization.id).classList.add('active');
+                
+                // Load script if not already loaded
+                if (!visualization.loaded) {
+                    return this.loadScript(visualization.script)
+                        .then(() => {
+                            visualization.loaded = true;
+                            // Initialize if namespace exists
+                            const visNamespace = this.getVisualizationNamespace(visualization.id);
+                            if (visNamespace && typeof visNamespace.init === 'function') {
+                                setTimeout(() => visNamespace.init(), 100); // Small delay to ensure everything is ready
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error loading visualization:', error);
+                        });
+                } else {
+                    // If already loaded, reinitialize it
+                    const visNamespace = this.getVisualizationNamespace(visualization.id);
+                    if (visNamespace && typeof visNamespace.init === 'function') {
+                        visNamespace.init();
+                    } else {
+                        // Legacy fallback: reset the canvas and reload the script
+                        const canvas = document.getElementById(visualization.id);
+                        if (canvas) {
+                            const ctx = canvas.getContext('2d');
+                            ctx.clearRect(0, 0, canvas.width, canvas.height);
+                            
+                            // Execute the script again by creating a new script element
+                            const script = document.createElement('script');
+                            script.src = visualization.script + '?v=' + new Date().getTime(); // Add cache-busting
+                            document.body.appendChild(script);
+                        }
+                    }
+                    
+                    return Promise.resolve();
+                }
+            }
+            
+            loadScript(src) {
+                return new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = src;
+                    script.onload = resolve;
+                    script.onerror = reject;
+                    document.body.appendChild(script);
+                });
+            }
+            
+            // Add a helper method to get visualization namespace
+            getVisualizationNamespace(canvasId) {
+                switch (canvasId) {
+                    case 'graph-canvas':
+                        return window.GraphNetwork;
+                    case 'lifesarrival-canvas':
+                        return window.LifesArrival;
+                    case 'triangles-canvas':
+                        return window.Triangles;
+                    case 'plankton-canvas':
+                        return window.Plankton;
+                    case 'phylogenetic-canvas':
+                        return window.PhylogeneticTrees;
+                    default:
+                        return null;
+                }
+            }
+        }
+        
+        // Initialize the visualization manager when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            window.visManager = new VisualizationManager();
         });
     </script>
 </body>
