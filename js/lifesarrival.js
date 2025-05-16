@@ -29,7 +29,7 @@
     
     // Core data
     const symbols = window.LifesArrival.symbols;
-    const MAX_SYMBOLS = 700; // More symbols for immersion
+    const MAX_SYMBOLS = 2000; // More symbols for immersion
     const MAX_CONNECTIONS = 3;
     
     // IPA (International Phonetic Alphabet) symbols
@@ -53,13 +53,13 @@
     const globalRotationSpeed = 0.0005; // Very slow global rotation
     
     // Depth range - for full immersion
-    const DEPTH_RANGE = 1500; // Deep Z range for symbols to float in
-    const MIN_DEPTH = -750; // Far behind
-    const MAX_DEPTH = 750;  // Far in front
+    const DEPTH_RANGE = 2000; // Deeper Z range for a wider field of view
+    const MIN_DEPTH = -1000; // Further behind
+    const MAX_DEPTH = 1000;  // Further in front
     
     // Space dimensions - larger than viewport for immersion
-    const SPACE_WIDTH = canvas.width * 3;
-    const SPACE_HEIGHT = canvas.height * 3;
+    const SPACE_WIDTH = canvas.width * 4;
+    const SPACE_HEIGHT = canvas.height * 4;
     const SPACE_DEPTH = DEPTH_RANGE;
     
     // Center point for perspective
@@ -67,7 +67,7 @@
     let centerY = window.innerHeight / 2;
     
     // Perspective settings
-    const FOCAL_LENGTH = 500; // Controls perspective effect strength
+    const FOCAL_LENGTH = 800; // Increased focal length for wider perspective
     
     // Check if we should auto-start
     console.log('Canvas active:', canvas.classList.contains('active'));
@@ -79,10 +79,10 @@
     function init() {
         console.log('Initializing LifesArrival');
         
-        // Reset camera
+        // Reset camera - start further back
         cameraX = 0;
         cameraY = 0;
-        cameraZ = 0;
+        cameraZ = -400; // Start with a more distant view
         globalRotationAngle = 0;
         
         // Clear existing symbols
@@ -123,7 +123,7 @@
     function createSymbol() {
         // Random IPA symbol
         const char = ipaSymbols.charAt(Math.floor(Math.random() * ipaSymbols.length));
-        const fontSize = 14 + Math.random() * 26; // Larger font size range
+        const fontSize = 18 + Math.random() * 32; // Larger font size range
         
         return {
             x: 0, // Will be set during initialization
@@ -137,15 +137,15 @@
             vx: (Math.random() - 0.5) * 0.2, // Slow natural drift
             vy: (Math.random() - 0.5) * 0.2,
             vz: (Math.random() - 0.5) * 0.05, // Very slow z drift
-            alpha: 0.2 + Math.random() * 0.5,
+            alpha: 0.5 + Math.random() * 0.5, // Higher minimum alpha
             consciousness: 0,
-            awakening: Math.random() < 0.3,
-            awakeningSpeed: 0.0001 + Math.random() * 0.0003, // Slower awakening
+            awakening: Math.random() < 0.5, // More symbols awaken
+            awakeningSpeed: 0.0002 + Math.random() * 0.0005, // Faster awakening
             rotationAngle: Math.random() * Math.PI * 2,
             rotationSpeed: (Math.random() - 0.5) * 0.001, // Very slow rotation
             meaning: Math.random(),
             connected: [],
-            brightness: 0.2 + Math.random() * 0.3
+            brightness: 0.5 + Math.random() * 0.5 // Higher brightness
         };
     }
     
@@ -158,32 +158,33 @@
         breathePhase = (breathePhase + 1) % breatheCycle;
         const breatheFactor = Math.sin((breathePhase / breatheCycle) * Math.PI);
         
-        // Create a falling sensation with gentle spiral
-        cameraX = Math.sin(time * 0.0003) * 50;
-        cameraY = Math.cos(time * 0.0002) * 30;
-        // Gradual forward movement to create falling sensation
-        // Accelerating fall with occasional "tumble" effect
-        fallAcceleration = Math.min(0.05, fallAcceleration * 1.001);
-        cameraZ += 0.8 + fallAcceleration;
+        // More stable, wider camera motion
+        cameraX = Math.sin(time * 0.0001) * 100;
+        cameraY = Math.cos(time * 0.00015) * 70;
         
-        // Add subtle tumble effect
-        if (time % 500 < 100) {
-            cameraX += Math.sin(time * 0.01) * 1.5;
-            cameraY += Math.cos(time * 0.008) * 1.5;
+        // Slower forward movement for a more stable view
+        fallAcceleration = Math.min(0.02, fallAcceleration * 1.0005);
+        cameraZ += 0.3 + fallAcceleration;
+        
+        // Occasional gentle camera sway
+        if (time % 800 < 200) {
+            cameraX += Math.sin(time * 0.003) * 5;
+            cameraY += Math.cos(time * 0.004) * 5;
         }
         
-        // Reset camera position periodically to continue falling
-        if (cameraZ > MAX_DEPTH) {
-            cameraZ = MIN_DEPTH;
+        // Reset camera position periodically to continue falling,
+        // but keep it further back for a wider view
+        if (cameraZ > 300) {
+            cameraZ = -400;
             fallAcceleration = 0.001; // Reset acceleration when recycling
         }
         
         // Update global rotation for 3D immersion
         globalRotationAngle += globalRotationSpeed;
         
-        // Occasionally create new symbols if under limit
-        if (time % 30 === 0 && symbols.length < MAX_SYMBOLS) {
-            const newSymbolCount = Math.min(5, MAX_SYMBOLS - symbols.length);
+        // Occasionally create new symbols if under limit - create more symbols more frequently
+        if (time % 10 === 0 && symbols.length < MAX_SYMBOLS) {
+            const newSymbolCount = Math.min(15, MAX_SYMBOLS - symbols.length);
             for (let i = 0; i < newSymbolCount; i++) {
                 const symbol = createSymbol();
                 
@@ -328,13 +329,8 @@
     function draw() {
         if (!window.LifesArrival.active) return;
         
-        // Create gradient background for a language world immersion feel
-        const bgGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-        bgGradient.addColorStop(0, 'rgba(5, 5, 15, 0.12)');  // Dark blue-black at top
-        bgGradient.addColorStop(1, 'rgba(15, 12, 5, 0.12)'); // Hint of yellow-black at bottom
-        
-        // Clear canvas with semi-transparent gradient for trail effect
-        ctx.fillStyle = bgGradient;
+        // Clear canvas with solid black background
+        ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
         // Draw connections first (back to front)
@@ -358,14 +354,14 @@
                 // Skip if either symbol is behind camera
                 if ((symbol.z3D - cameraZ) <= 0 || (otherSymbol.z3D - cameraZ) <= 0) continue;
                 
-                // Calculate opacity based on distance and connection strength
-                const opacity = connection.strength * 0.3 * distanceFactor;
+                // Calculate opacity based on distance and connection strength - make more visible
+                const opacity = Math.min(1.0, connection.strength * 0.5 * distanceFactor);
                 
-                // Mellow yellow and blue components based on distance
-                const blueComponent = 100 + Math.floor(distanceFactor * 80);
-                const yellowComponent = 180 - Math.floor(distanceFactor * 50);
+                // Mellow yellow and blue components based on distance - brighter colors
+                const blueComponent = 150 + Math.floor(distanceFactor * 80);
+                const yellowComponent = 220 - Math.floor(distanceFactor * 50);
                 
-                // Connection color - yellow instead of green
+                // Connection color - yellow instead of green, brighter
                 ctx.strokeStyle = `rgba(${yellowComponent}, ${yellowComponent-30}, ${blueComponent}, ${opacity})`;
                 ctx.beginPath();
                 ctx.moveTo(symbol.x, symbol.y);
@@ -384,26 +380,26 @@
             // Calculate distance factor
             const distanceFactor = Math.min(1, (MAX_DEPTH / (symbol.z3D - cameraZ)));
             
-            // Skip very far or very transparent symbols
-            if (distanceFactor < 0.05 || symbol.alpha < 0.05) continue;
+            // Skip very far or very transparent symbols - allow closer to camera
+            if (distanceFactor < 0.03 || symbol.alpha < 0.05) continue;
             
-            // Size based on perspective and base size; increase by 30% to make symbols appear bigger
-            const displaySize = Math.floor(symbol.fontSize * symbol.scale * 1.3);
+            // Size based on perspective and base size; increase by 50% to make symbols appear bigger
+            const displaySize = Math.floor(symbol.fontSize * symbol.scale * 1.5);
             if (displaySize < 1) continue; // Skip if too small
             
-            ctx.font = `${displaySize}px Arial`;
+            ctx.font = `bold ${displaySize}px Arial`; // Make font bold
             
-            // Start as shadow, become vivid as they approach
+            // Start as shadow, become vivid as they approach - always bright
             const shadowFactor = Math.max(0, 1 - distanceFactor);
-            const brightness = Math.floor(symbol.brightness * 255 * distanceFactor);
-            const blueIntensity = brightness + Math.floor(shadowFactor * 50);
-            const yellowIntensity = brightness + Math.floor(distanceFactor * 35);
+            const brightness = Math.floor(255 * distanceFactor); // Full brightness
+            const blueIntensity = brightness + Math.floor(shadowFactor * 70);
+            const yellowIntensity = 240 - Math.floor(distanceFactor * 30); // Brighter yellow
             
-            // Apply alpha based on distance and consciousness
-            const displayAlpha = symbol.alpha * distanceFactor;
+            // Apply alpha based on distance and consciousness - higher baseline
+            const displayAlpha = Math.max(0.5, symbol.alpha * distanceFactor);
             
-            // Color with distance effect - mellow yellow instead of green
-            ctx.fillStyle = `rgba(${yellowIntensity}, ${yellowIntensity - 20}, ${blueIntensity}, ${displayAlpha})`; // Shadow to reality effect
+            // Color with distance effect - bright yellow and white
+            ctx.fillStyle = `rgba(${yellowIntensity}, ${yellowIntensity - 10}, ${blueIntensity}, ${displayAlpha})`;
             ctx.globalAlpha = displayAlpha;
             
             // Draw with rotation

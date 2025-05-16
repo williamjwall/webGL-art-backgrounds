@@ -57,16 +57,7 @@
         .btn:hover {
             background-color: rgba(0, 136, 255, 0.3);
         }
-        .visualization-title {
-            position: fixed;
-            top: 20px;
-            left: 0;
-            width: 100%;
-            text-align: center;
-            font-size: 24px;
-            z-index: 100;
-            pointer-events: none;
-        }
+
     </style>
 </head>
 <body>
@@ -78,8 +69,6 @@
         <canvas id="graph-canvas" class="active"></canvas>
         <canvas id="lifesarrival-canvas"></canvas>
         <canvas id="phylogenetic-canvas"></canvas>
-        
-        <div class="visualization-title" id="vis-title">Graph Network</div>
         
         <div class="controls">
             <button class="btn" id="prev-btn">Previous</button>
@@ -94,36 +83,36 @@
             constructor() {
                 this.visualizations = [
                     { 
-                        id: 'triangles-canvas', 
-                        title: 'Triangles', 
+                        id: 'triangles-canvas',
+                        title: 'Triangles',
                         script: 'js/triangles.js',
                         instance: null,
                         loaded: false
                     },
                     { 
-                        id: 'plankton-canvas', 
-                        title: 'Plankton', 
+                        id: 'plankton-canvas',
+                        title: 'Plankton',
                         script: 'js/plankton.js',
                         instance: null,
                         loaded: false
                     },
                     { 
-                        id: 'graph-canvas', 
-                        title: 'Graph Network', 
+                        id: 'graph-canvas',
+                        title: 'Graph Network',
                         script: 'js/graph.js',
                         instance: null,
                         loaded: false 
                     },
                     { 
-                        id: 'lifesarrival-canvas', 
-                        title: 'Language Coming to Life', 
+                        id: 'lifesarrival-canvas',
+                        title: 'Language Coming to Life',
                         script: 'js/lifesarrival.js',
                         instance: null,
                         loaded: false
                     },
                     { 
-                        id: 'phylogenetic-canvas', 
-                        title: 'Phylogenetic Trees', 
+                        id: 'phylogenetic-canvas',
+                        title: 'Phylogenetic Trees',
                         script: 'js/phylogenetic_trees.js',
                         instance: null,
                         loaded: false
@@ -132,7 +121,6 @@
                 
                 this.currentIndex = 2; // Start with graph-canvas (index 2)
                 this.activeAnimation = null;
-                this.titleElement = document.getElementById('vis-title');
                 
                 // Initialize event listeners
                 this.initEventListeners();
@@ -195,9 +183,6 @@
             
             loadVisualization(index) {
                 const visualization = this.visualizations[index];
-                
-                // Update title
-                this.titleElement.textContent = visualization.title;
                 
                 // Show canvas
                 document.getElementById(visualization.id).classList.add('active');
