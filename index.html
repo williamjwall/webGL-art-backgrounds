@@ -69,6 +69,8 @@
         <canvas id="graph-canvas" class="active"></canvas>
         <canvas id="lifesarrival-canvas"></canvas>
         <canvas id="phylogenetic-canvas"></canvas>
+        <canvas id="decision-trees-canvas"></canvas>
+        <canvas id="birds-canvas"></canvas>
         
         <div class="controls">
             <button class="btn" id="prev-btn">Previous</button>
@@ -82,6 +84,13 @@
         class VisualizationManager {
             constructor() {
                 this.visualizations = [
+                    { 
+                        id: 'phylogenetic-canvas',
+                        title: 'Phylogenetic Trees',
+                        script: 'js/phylogenetic_trees.js',
+                        instance: null,
+                        loaded: false
+                    },
                     { 
                         id: 'triangles-canvas',
                         title: 'Triangles',
@@ -105,21 +114,28 @@
                     },
                     { 
                         id: 'lifesarrival-canvas',
-                        title: 'Language Coming to Life',
+                        title: 'sound floating',
                         script: 'js/lifesarrival.js',
                         instance: null,
                         loaded: false
                     },
                     { 
-                        id: 'phylogenetic-canvas',
-                        title: 'Phylogenetic Trees',
-                        script: 'js/phylogenetic_trees.js',
+                        id: 'decision-trees-canvas',
+                        title: 'Decision Trees',
+                        script: 'js/roots.js',
+                        instance: null,
+                        loaded: false
+                    },
+                    { 
+                        id: 'birds-canvas',
+                        title: 'Poetic Birds',
+                        script: 'js/birds.js',
                         instance: null,
                         loaded: false
                     }
                 ];
                 
-                this.currentIndex = 2; // Start with graph-canvas (index 2)
+                this.currentIndex = 0; // Start with graph-canvas (index 2)
                 this.activeAnimation = null;
                 
                 // Initialize event listeners
@@ -247,6 +263,10 @@
                         return window.Plankton;
                     case 'phylogenetic-canvas':
                         return window.PhylogeneticTrees;
+                    case 'decision-trees-canvas':
+                        return window.Roots;
+                    case 'birds-canvas':
+                        return window.Birds;
                     default:
                         return null;
                 }

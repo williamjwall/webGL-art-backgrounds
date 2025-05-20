@@ -29,48 +29,9 @@
     const numNodes = 150; // More nodes for better coverage
     const maxDistance = 150;
     
-    // Track mouse position for click events only
-    let mousePosition = {
-        x: undefined,
-        y: undefined
-    };
-    
-    // Listen for mouse movement
-    canvas.addEventListener('mousemove', (event) => {
-        mousePosition.x = event.x;
-        mousePosition.y = event.y;
-    });
-    
-    // Add nodes on click - create a burst effect
-    canvas.addEventListener('click', () => {
-        // Only handle clicks if active
-        if (!window.GraphNetwork.active) return;
-        
-        // Create a burst of nodes
-        const burstSize = 12;
-        const clickX = mousePosition.x;
-        const clickY = mousePosition.y;
-        
-        for (let i = 0; i < burstSize; i++) {
-            const angle = (i / burstSize) * Math.PI * 2;
-            const distance = 5 + Math.random() * 10;
-            const node = createNode();
-            
-            // Position nodes in a circle
-            node.x = clickX + Math.cos(angle) * distance;
-            node.y = clickY + Math.sin(angle) * distance;
-            
-            // Give them velocity away from click point
-            const speed = 0.5 + Math.random() * 1;
-            node.vx = Math.cos(angle) * speed;
-            node.vy = Math.sin(angle) * speed;
-            
-            // Make them slightly larger
-            node.radius = 2 + Math.random() * 2;
-            
-            nodes.push(node);
-        }
-    });
+    // Remove mouse tracking and click events
+    let lastBurstTime = Date.now();
+    const burstInterval = 2000; // Burst every 2 seconds
     
     // Only initialize if this is the active canvas
     if (canvas.classList.contains('active')) {
@@ -112,6 +73,37 @@
         const time = Date.now() * 0.0001;
         const flowAngleX = Math.sin(time * 0.3) * 0.01; 
         const flowAngleY = Math.cos(time * 0.2) * 0.01;
+        
+        // Create random bursts
+        const currentTime = Date.now();
+        if (currentTime - lastBurstTime > burstInterval) {
+            lastBurstTime = currentTime;
+            
+            // Create a burst of nodes at random position
+            const burstSize = 8;
+            const burstX = Math.random() * canvas.width;
+            const burstY = Math.random() * canvas.height;
+            
+            for (let i = 0; i < burstSize; i++) {
+                const angle = (i / burstSize) * Math.PI * 2;
+                const distance = 5 + Math.random() * 10;
+                const node = createNode();
+                
+                // Position nodes in a circle
+                node.x = burstX + Math.cos(angle) * distance;
+                node.y = burstY + Math.sin(angle) * distance;
+                
+                // Give them velocity away from burst point
+                const speed = 0.5 + Math.random() * 1;
+                node.vx = Math.cos(angle) * speed;
+                node.vy = Math.sin(angle) * speed;
+                
+                // Make them slightly larger
+                node.radius = 2 + Math.random() * 2;
+                
+                nodes.push(node);
+            }
+        }
         
         nodes.forEach(node => {
             // Age nodes
@@ -172,11 +164,11 @@
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Draw proximity edges
+        // Draw proximity edges with reduced opacity
         edges.forEach(edge => {
-            const opacity = 0.15 * (1 - edge.dist / maxDistance);
+            const opacity = 0.08 * (1 - edge.dist / maxDistance); // Reduced from 0.15 to 0.08
             ctx.strokeStyle = `rgba(255, 255, 255, ${opacity})`;
-            ctx.lineWidth = 0.5;
+            ctx.lineWidth = 0.8; // Increased from 0.3 to 0.8
             ctx.beginPath();
             ctx.moveTo(edge.from.x, edge.from.y);
             ctx.lineTo(edge.to.x, edge.to.y);

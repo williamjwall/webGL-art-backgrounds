@@ -1,61 +1,144 @@
+/**
+ * Plankton Visualization
+ * 
+ * A 3D aquatic ecosystem visualization using Three.js
+ */
 (function() {
+    // Create a namespace for this visualization
+    window.Plankton = {
+        active: false,
+        animationId: null,
+        init: initialize,
+        stop: stopAnimation
+    };
+
+    // Constants
+    const BOUNDS = 40;
+    const COLORS = {
+        background: 0x001a2e,
+        ambient: 0x003060,
+        directional: 0x005080,
+        particles: 0x6699bb,
+        jellyfishDome: 0x4477aa,
+        jellyfishEmissive: 0x002244,
+        jellyfishTentacle: 0x336688,
+        trunk: 0x4477aa,
+        branchEmissive: 0x002244,
+        fishColors: [0xaa5533, 0x447788, 0xaa9944, 0x884466, 0x55aa88],
+        schoolColors: [0x5588aa, 0xaa7744, 0x886677]
+    };
+
     // Device detection for performance optimization
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     
-    // Initialize Three.js scene
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x001a2e); // Deep blue background
+    // Scene elements
+    let scene, camera, renderer;
+    let particleGroup, animalGroup;
     
-    const canvas = document.getElementById('plankton-canvas');
-    if (!canvas) return; // Exit gracefully if canvas doesn't exist
+    /**
+     * Initialize the scene and all elements
+     */
+    function initialize() {
+        // Skip if already active
+        if (window.Plankton.active) return;
+        
+        // Set up initial state
+        window.Plankton.active = true;
+        setupScene();
+        createEnvironment();
+        addEventListeners();
+        animate();
+    }
     
-    const renderer = new THREE.WebGLRenderer({
-        canvas: canvas,
-        antialias: true
-    });
+    /**
+     * Stop the animation and clean up
+     */
+    function stopAnimation() {
+        window.Plankton.active = false;
+        if (window.Plankton.animationId) {
+            cancelAnimationFrame(window.Plankton.animationId);
+            window.Plankton.animationId = null;
+        }
+    }
     
-    // Set initial size to match the window
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    /**
+     * Set up the Three.js scene, camera, and renderer
+     */
+    function setupScene() {
+        const canvas = document.getElementById('plankton-canvas');
+        if (!canvas) return; // Exit gracefully if canvas doesn't exist
+        
+        // Initialize scene
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(COLORS.background);
+        scene.fog = new THREE.FogExp2(COLORS.background, 0.02);
+        
+        // Set up renderer
+        renderer = new THREE.WebGLRenderer({
+            canvas: canvas,
+            antialias: true
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        
+        // Set up camera
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 30;
+        
+        // Add lighting
+        const ambientLight = new THREE.AmbientLight(COLORS.ambient, 0.6);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(COLORS.directional, 0.8);
+        directionalLight.position.set(0, 10, 10);
+        scene.add(directionalLight);
+        
+        // Create groups for different elements
+        particleGroup = new THREE.Group();
+        animalGroup = new THREE.Group();
+        scene.add(particleGroup);
+        scene.add(animalGroup);
+    }
     
-    // Create camera
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.z = 30;
-    camera.position.y = 0;
+    /**
+     * Create all environment elements
+     */
+    function createEnvironment() {
+        createParticles();
+        createAquaticLife();
+    }
     
-    // Add fog for depth
-    scene.fog = new THREE.FogExp2(0x001a2e, 0.02);
+    /**
+     * Add event listeners for window resize
+     */
+    function addEventListeners() {
+        window.addEventListener('resize', () => {
+            if (!window.Plankton.active) return;
+            
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    }
     
-    // Add lighting
-    const ambientLight = new THREE.AmbientLight(0x004080, 0.6);
-    scene.add(ambientLight);
-    
-    const directionalLight = new THREE.DirectionalLight(0x0080ff, 0.8);
-    directionalLight.position.set(0, 10, 10);
-    scene.add(directionalLight);
-    
-    // Create groups for different elements
-    const particleGroup = new THREE.Group();
-    const animalGroup = new THREE.Group();
-    scene.add(particleGroup);
-    scene.add(animalGroup);
-    
-    // Create particles (plankton/bubbles)
+    /**
+     * Create particles representing plankton/microbial life
+     */
     function createParticles() {
         const particleCount = isMobile ? 1000 : 3000;
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(particleCount * 3);
         
         for (let i = 0; i < particleCount; i++) {
-            positions[i * 3] = (Math.random() - 0.5) * 60;
-            positions[i * 3 + 1] = (Math.random() - 0.5) * 60;
-            positions[i * 3 + 2] = (Math.random() - 0.5) * 60;
+            positions[i * 3] = (Math.random() - 0.5) * BOUNDS * 1.5;
+            positions[i * 3 + 1] = (Math.random() - 0.5) * BOUNDS * 1.5;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * BOUNDS * 1.5;
         }
         
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         
         const material = new THREE.PointsMaterial({
-            color: 0x88ccff,
+            color: COLORS.particles,
             size: 0.3,
             transparent: true,
             opacity: 0.6,
@@ -66,17 +149,61 @@
         particleGroup.add(particles);
     }
     
-    // Create jellyfish
+    /**
+     * Create all aquatic life forms
+     */
+    function createAquaticLife() {
+        // Create jellyfish
+        const jellyfishCount = isMobile ? 3 : 7;
+        for (let i = 0; i < jellyfishCount; i++) {
+            createJellyfish(
+                (Math.random() - 0.5) * BOUNDS,
+                (Math.random() - 0.5) * BOUNDS,
+                (Math.random() - 0.5) * BOUNDS,
+                1 + Math.random() * 2
+            );
+        }
+        
+        // Create individual fish
+        const fishCount = isMobile ? 5 : 15;
+        for (let i = 0; i < fishCount; i++) {
+            const color = COLORS.fishColors[Math.floor(Math.random() * COLORS.fishColors.length)];
+            createFish(
+                (Math.random() - 0.5) * BOUNDS,
+                (Math.random() - 0.5) * BOUNDS,
+                (Math.random() - 0.5) * BOUNDS,
+                0.5 + Math.random() * 0.5,
+                color
+            );
+        }
+        
+        // Create fish schools
+        const schoolCount = isMobile ? 2 : 5;
+        for (let i = 0; i < schoolCount; i++) {
+            const color = COLORS.schoolColors[Math.floor(Math.random() * COLORS.schoolColors.length)];
+            createFishSchool(
+                (Math.random() - 0.5) * BOUNDS,
+                (Math.random() - 0.5) * BOUNDS,
+                (Math.random() - 0.5) * BOUNDS,
+                isMobile ? 10 : 20,
+                color
+            );
+        }
+    }
+    
+    /**
+     * Create a jellyfish entity
+     */
     function createJellyfish(x, y, z, size) {
         const jellyfish = new THREE.Group();
         
         // Create dome
         const domeGeometry = new THREE.SphereGeometry(size, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
         const domeMaterial = new THREE.MeshPhongMaterial({
-            color: 0x00aaff,
+            color: COLORS.jellyfishDome,
             transparent: true,
             opacity: 0.7,
-            emissive: 0x0044aa,
+            emissive: COLORS.jellyfishEmissive,
             shininess: 100
         });
         
@@ -92,7 +219,7 @@
             
             const tentacleGeometry = new THREE.BoxGeometry(0.1 * size, size * 2, 0.1 * size);
             const tentacleMaterial = new THREE.MeshPhongMaterial({
-                color: 0x0088cc,
+                color: COLORS.jellyfishTentacle,
                 transparent: true,
                 opacity: 0.6
             });
@@ -114,19 +241,20 @@
             jellyfish.add(tentacle);
         }
         
-        // Set position and add to scene
+        // Set position and animation data
         jellyfish.position.set(x, y, z);
-        
-        // Add animation data
         jellyfish.userData = {
-            speed: 0.2 + Math.random() * 0.3,
-            phase: Math.random() * Math.PI * 2
+            speed: 0.1 + Math.random() * 0.15,
+            phase: Math.random() * Math.PI * 2,
+            type: 'jellyfish'
         };
         
         animalGroup.add(jellyfish);
     }
     
-    // Create fish
+    /**
+     * Create an individual fish
+     */
     function createFish(x, y, z, size, color) {
         const fish = new THREE.Group();
         
@@ -153,22 +281,23 @@
         tail.rotation.y = Math.PI;
         fish.add(tail);
         
-        // Set position and add to scene
+        // Set position and animation data
         fish.position.set(x, y, z);
-        
-        // Add animation data
         fish.userData = {
-            speed: 0.05 + Math.random() * 0.1,
-            turnSpeed: 0.02,
-            targetX: x + (Math.random() - 0.5) * 40,
-            targetY: y + (Math.random() - 0.5) * 40,
-            targetZ: z + (Math.random() - 0.5) * 40
+            speed: 0.02 + Math.random() * 0.04,
+            turnSpeed: 0.01,
+            targetX: x + (Math.random() - 0.5) * BOUNDS,
+            targetY: y + (Math.random() - 0.5) * BOUNDS,
+            targetZ: z + (Math.random() - 0.5) * BOUNDS,
+            type: 'fish'
         };
         
         animalGroup.add(fish);
     }
     
-    // Create fish school
+    /**
+     * Create a school of fish
+     */
     function createFishSchool(x, y, z, count, color) {
         const school = new THREE.Group();
         
@@ -197,268 +326,218 @@
                 originalX: fish.position.x,
                 originalY: fish.position.y,
                 originalZ: fish.position.z,
-                speed: 0.5 + Math.random() * 0.5,
+                speed: 0.2 + Math.random() * 0.3,
                 phase: Math.random() * Math.PI * 2
             };
             
             school.add(fish);
         }
         
-        // Set school position
+        // Set school position and animation data
         school.position.set(x, y, z);
-        
-        // Add animation data
         school.userData = {
-            speed: 0.02 + Math.random() * 0.02,
-            turnSpeed: 0.005,
-            targetX: x + (Math.random() - 0.5) * 40,
-            targetY: y + (Math.random() - 0.5) * 40,
-            targetZ: z + (Math.random() - 0.5) * 40
+            speed: 0.01 + Math.random() * 0.01,
+            turnSpeed: 0.003,
+            targetX: x + (Math.random() - 0.5) * BOUNDS,
+            targetY: y + (Math.random() - 0.5) * BOUNDS,
+            targetZ: z + (Math.random() - 0.5) * BOUNDS,
+            type: 'school'
         };
         
         animalGroup.add(school);
     }
     
-    // Create a simple phylogenetic tree
-    function createPhylogeneticTree() {
-        const treeGroup = new THREE.Group();
-        scene.add(treeGroup);
-        
-        const trunkHeight = 20;
-        const trunkGeometry = new THREE.CylinderGeometry(0.2, 0.5, trunkHeight, 8);
-        const trunkMaterial = new THREE.MeshPhongMaterial({
-            color: 0x00aaff,
-            emissive: 0x0044aa,
-            emissiveIntensity: 0.5
-        });
-        
-        const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-        trunk.position.set(0, -10, -20); // Position at bottom of scene
-        treeGroup.add(trunk);
-        
-        // Create branches
-        createBranch(trunk, trunkHeight / 2, 0, 0, 5, 0);
-        
-        return treeGroup;
-    }
-    
-    // Create branch recursively
-    function createBranch(parentBranch, x, y, z, length, depth) {
-        if (depth > 3) return; // Limit recursion depth
-        
-        const branchGeometry = new THREE.CylinderGeometry(0.1, 0.2, length, 6);
-        const branchMaterial = new THREE.MeshPhongMaterial({
-            color: 0x00ccff,
-            emissive: 0x0044aa,
-            emissiveIntensity: 0.3
-        });
-        
-        const branch = new THREE.Mesh(branchGeometry, branchMaterial);
-        branch.position.set(x, y, z);
-        branch.rotation.z = Math.random() * Math.PI * 0.5 - Math.PI * 0.25;
-        parentBranch.add(branch);
-        
-        const endX = 0;
-        const endY = length / 2;
-        const endZ = 0;
-        
-        // Create two branches at the end of this branch
-        for (let i = 0; i < 2; i++) {
-            const newLength = length * 0.7;
-            const offsetX = Math.random() * 0.5;
-            const offsetY = newLength * 0.5;
-            const offsetZ = Math.random() * 0.5;
-            
-            createBranch(branch, endX + offsetX, endY + offsetY, endZ + offsetZ, newLength, depth + 1);
-        }
-    }
-    
-    // Initialize scene
-    function init() {
-        createParticles();
-        
-        // Create phylogenetic tree
-        const tree = createPhylogeneticTree();
-        
-        // Create jellyfish
-        for (let i = 0; i < (isMobile ? 3 : 7); i++) {
-            createJellyfish(
-                (Math.random() - 0.5) * 40,
-                (Math.random() - 0.5) * 40,
-                (Math.random() - 0.5) * 40,
-                1 + Math.random() * 2
-            );
-        }
-        
-        // Create individual fish
-        for (let i = 0; i < (isMobile ? 5 : 15); i++) {
-            const fishColors = [0xff6600, 0x00aaff, 0xffcc00, 0xff00cc, 0x00ffaa];
-            const color = fishColors[Math.floor(Math.random() * fishColors.length)];
-            
-            createFish(
-                (Math.random() - 0.5) * 40,
-                (Math.random() - 0.5) * 40,
-                (Math.random() - 0.5) * 40,
-                0.5 + Math.random() * 0.5,
-                color
-            );
-        }
-        
-        // Create fish schools
-        for (let i = 0; i < (isMobile ? 2 : 5); i++) {
-            const schoolColors = [0x66ccff, 0xffaa00, 0xff6677];
-            const color = schoolColors[Math.floor(Math.random() * schoolColors.length)];
-            
-            createFishSchool(
-                (Math.random() - 0.5) * 40,
-                (Math.random() - 0.5) * 40,
-                (Math.random() - 0.5) * 40,
-                isMobile ? 10 : 20,
-                color
-            );
-        }
-    }
-    
-    // Handle window resize
-    window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-    
-    // Animation loop
+    /**
+     * Main animation loop
+     */
     function animate() {
-        requestAnimationFrame(animate);
+        if (!window.Plankton.active) return;
+        
+        window.Plankton.animationId = requestAnimationFrame(animate);
         
         const time = Date.now() * 0.001;
         
-        // Animate particles
-        particleGroup.children.forEach(particles => {
-            particles.rotation.y = time * 0.02; // Slower rotation
-            particles.rotation.x = time * 0.01; // Slower rotation
-        });
-        
-        // Animate animals
-        animalGroup.children.forEach(animal => {
-            // Jellyfish animation
-            if (animal.children[0] && animal.children[0].geometry.type === 'SphereGeometry') {
-                // Pulse animation
-                const pulse = Math.sin(time * animal.userData.speed * 0.5 + animal.userData.phase) * 0.1 + 1;
-                animal.scale.y = pulse;
-                
-                // Move upward slowly
-                animal.position.y += 0.01; // Slower upward movement
-                
-                // Wrap around when reaching the top
-                if (animal.position.y > 30) {
-                    animal.position.y = -30;
-                    animal.position.x = (Math.random() - 0.5) * 40;
-                    animal.position.z = (Math.random() - 0.5) * 40;
-                }
-                
-                // Animate tentacles
-                for (let i = 1; i < animal.children.length; i++) {
-                    const tentacle = animal.children[i];
-                    const swayAmount = 0.1; // Reduced sway
-                    tentacle.rotation.z = Math.sin(time * 1 + i) * swayAmount;
-                }
-            }
-            // Individual fish animation
-            else if (animal.children.length === 2) { // Body + tail
-                // Move toward target
-                const dx = animal.userData.targetX - animal.position.x;
-                const dy = animal.userData.targetY - animal.position.y;
-                const dz = animal.userData.targetZ - animal.position.z;
-                
-                animal.position.x += dx * animal.userData.speed * 0.5; // Slower movement
-                animal.position.y += dy * animal.userData.speed * 0.5; // Slower movement
-                animal.position.z += dz * animal.userData.speed * 0.5; // Slower movement
-                
-                // Rotate to face direction of movement
-                if (Math.abs(dx) > 0.1 || Math.abs(dz) > 0.1) {
-                    const targetRotation = Math.atan2(dx, dz);
-                    animal.rotation.y += (targetRotation - animal.rotation.y) * animal.userData.turnSpeed * 0.5; // Slower turning
-                }
-                
-                // Wag tail
-                animal.children[1].rotation.x = Math.sin(time * 5) * 0.3; // Slower wagging
-                
-                // Set new target if reached
-                if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(dz) < 1) {
-                    animal.userData.targetX = (Math.random() - 0.5) * 40;
-                    animal.userData.targetY = (Math.random() - 0.5) * 40;
-                    animal.userData.targetZ = (Math.random() - 0.5) * 40;
-                }
-            }
-            // Fish school animation
-            else if (animal.children.length > 2) {
-                // Move school toward target
-                const dx = animal.userData.targetX - animal.position.x;
-                const dy = animal.userData.targetY - animal.position.y;
-                const dz = animal.userData.targetZ - animal.position.z;
-                
-                animal.position.x += dx * animal.userData.speed * 0.5; // Slower movement
-                animal.position.y += dy * animal.userData.speed * 0.5; // Slower movement
-                animal.position.z += dz * animal.userData.speed * 0.5; // Slower movement
-                
-                // Rotate to face direction of movement
-                if (Math.abs(dx) > 0.1 || Math.abs(dz) > 0.1) {
-                    const targetRotation = Math.atan2(dx, dz);
-                    animal.rotation.y += (targetRotation - animal.rotation.y) * animal.userData.turnSpeed * 0.5; // Slower turning
-                }
-                
-                // Animate individual fish in school
-                for (let i = 0; i < animal.children.length; i++) {
-                    const fish = animal.children[i];
-                    const data = fish.userData;
-                    
-                    // Oscillating movement within school
-                    fish.position.x = data.originalX + Math.sin(time * data.speed * 0.5 + data.phase) * 0.3;
-                    fish.position.y = data.originalY + Math.cos(time * data.speed * 0.35 + data.phase) * 0.2;
-                    fish.position.z = data.originalZ + Math.sin(time * data.speed * 0.25 + data.phase + Math.PI/2) * 0.3;
-                    
-                    // Wag tail (rotate slightly)
-                    fish.rotation.z = Math.sin(time * 5 + i) * 0.1; // Slower wagging
-                }
-                
-                // Set new target if reached
-                if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(dz) < 1) {
-                    animal.userData.targetX = (Math.random() - 0.5) * 40;
-                    animal.userData.targetY = (Math.random() - 0.5) * 40;
-                    animal.userData.targetZ = (Math.random() - 0.5) * 40;
-                }
-            }
-        });
-        
-        // Slowly rotate camera for more dynamic view
-        camera.position.x = Math.sin(time * 0.05) * 5; // Slower camera movement
-        camera.position.y = Math.sin(time * 0.025) * 5; // Slower camera movement
-        camera.lookAt(0, 0, 0);
-        
-        // Animate phylogenetic tree
-        scene.children.forEach(child => {
-            if (child.userData && child.userData.growthState !== undefined) {
-                // Grow the tree gradually
-                if (child.userData.growthState < 1) {
-                    child.userData.growthState += child.userData.growthSpeed;
-                    const growth = THREE.MathUtils.smoothstep(child.userData.growthState, 0, 1);
-                    child.scale.set(growth, growth, growth);
-                }
-                
-                // Animate branches to grow and shrink
-                child.traverse(object => {
-                    if (object.geometry && object.geometry.type === 'CylinderGeometry') {
-                        const scale = 1 + Math.sin(time * 0.5 + object.position.y) * 0.1;
-                        object.scale.set(scale, scale, scale);
-                    }
-                });
-            }
-        });
+        animateParticles(time);
+        animateAquaticLife(time);
+        animateCamera(time);
         
         renderer.render(scene, camera);
     }
     
-    // Start the animation
-    init();
-    animate();
+    /**
+     * Animate the plankton particles
+     */
+    function animateParticles(time) {
+        particleGroup.children.forEach(particles => {
+            particles.rotation.y = time * 0.02;
+            particles.rotation.x = time * 0.01;
+        });
+    }
+    
+    /**
+     * Animate all aquatic life forms
+     */
+    function animateAquaticLife(time) {
+        animalGroup.children.forEach(animal => {
+            const type = animal.userData.type;
+            
+            if (type === 'jellyfish') {
+                animateJellyfish(animal, time);
+            } else if (type === 'fish') {
+                animateFish(animal, time);
+            } else if (type === 'school') {
+                animateFishSchool(animal, time);
+            }
+        });
+    }
+    
+    /**
+     * Animate jellyfish entity
+     */
+    function animateJellyfish(jellyfish, time) {
+        // Pulse animation
+        const pulse = Math.sin(time * jellyfish.userData.speed * 0.5 + jellyfish.userData.phase) * 0.1 + 1;
+        jellyfish.scale.y = pulse;
+        
+        // Move upward slowly
+        jellyfish.position.y += 0.005;
+        
+        // Wrap around when reaching the top
+        if (jellyfish.position.y > BOUNDS * 0.75) {
+            jellyfish.position.y = -BOUNDS * 0.75;
+            jellyfish.position.x = (Math.random() - 0.5) * BOUNDS;
+            jellyfish.position.z = (Math.random() - 0.5) * BOUNDS;
+        }
+        
+        // Animate tentacles
+        for (let i = 1; i < jellyfish.children.length; i++) {
+            const tentacle = jellyfish.children[i];
+            const swayAmount = 0.05;
+            tentacle.rotation.z = Math.sin(time * 0.7 + i) * swayAmount;
+        }
+    }
+    
+    /**
+     * Animate individual fish
+     */
+    function animateFish(fish, time) {
+        const data = fish.userData;
+        
+        // Move toward target
+        const dx = data.targetX - fish.position.x;
+        const dy = data.targetY - fish.position.y;
+        const dz = data.targetZ - fish.position.z;
+        
+        fish.position.x += dx * data.speed * 0.3;
+        fish.position.y += dy * data.speed * 0.3;
+        fish.position.z += dz * data.speed * 0.3;
+        
+        // Rotate to face direction of movement
+        if (Math.abs(dx) > 0.1 || Math.abs(dz) > 0.1) {
+            const targetRotation = Math.atan2(dx, dz);
+            fish.rotation.y += (targetRotation - fish.rotation.y) * data.turnSpeed * 0.5;
+        }
+        
+        // Wag tail
+        fish.children[1].rotation.x = Math.sin(time * 3) * 0.2;
+        
+        // Set new target if reached
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(dz) < 1) {
+            data.targetX = (Math.random() - 0.5) * BOUNDS;
+            data.targetY = (Math.random() - 0.5) * BOUNDS;
+            data.targetZ = (Math.random() - 0.5) * BOUNDS;
+        }
+        
+        // Ensure fish stays within bounds
+        keepEntityInBounds(fish);
+    }
+    
+    /**
+     * Animate fish school
+     */
+    function animateFishSchool(school, time) {
+        const data = school.userData;
+        
+        // Move school toward target
+        const dx = data.targetX - school.position.x;
+        const dy = data.targetY - school.position.y;
+        const dz = data.targetZ - school.position.z;
+        
+        school.position.x += dx * data.speed * 0.3;
+        school.position.y += dy * data.speed * 0.3;
+        school.position.z += dz * data.speed * 0.3;
+        
+        // Rotate to face direction of movement
+        if (Math.abs(dx) > 0.1 || Math.abs(dz) > 0.1) {
+            const targetRotation = Math.atan2(dx, dz);
+            school.rotation.y += (targetRotation - school.rotation.y) * data.turnSpeed * 0.5;
+        }
+        
+        // Animate individual fish in school
+        for (let i = 0; i < school.children.length; i++) {
+            const fish = school.children[i];
+            const fishData = fish.userData;
+            
+            // Oscillating movement within school
+            fish.position.x = fishData.originalX + Math.sin(time * fishData.speed * 0.3 + fishData.phase) * 0.2;
+            fish.position.y = fishData.originalY + Math.cos(time * fishData.speed * 0.2 + fishData.phase) * 0.15;
+            fish.position.z = fishData.originalZ + Math.sin(time * fishData.speed * 0.15 + fishData.phase + Math.PI/2) * 0.2;
+            
+            // Wag tail (rotate slightly)
+            fish.rotation.z = Math.sin(time * 3 + i) * 0.07;
+        }
+        
+        // Set new target if reached
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(dz) < 1) {
+            data.targetX = (Math.random() - 0.5) * BOUNDS;
+            data.targetY = (Math.random() - 0.5) * BOUNDS;
+            data.targetZ = (Math.random() - 0.5) * BOUNDS;
+        }
+        
+        // Ensure school stays within bounds
+        keepEntityInBounds(school);
+    }
+    
+    /**
+     * Keep entities within scene boundaries
+     */
+    function keepEntityInBounds(entity) {
+        const halfBounds = BOUNDS * 0.5;
+        
+        if (Math.abs(entity.position.x) > halfBounds) {
+            entity.position.x = Math.sign(entity.position.x) * halfBounds;
+            if (entity.userData.targetX) {
+                entity.userData.targetX = -entity.position.x * 0.8;
+            }
+        }
+        
+        if (Math.abs(entity.position.y) > halfBounds) {
+            entity.position.y = Math.sign(entity.position.y) * halfBounds;
+            if (entity.userData.targetY) {
+                entity.userData.targetY = -entity.position.y * 0.8;
+            }
+        }
+        
+        if (Math.abs(entity.position.z) > halfBounds) {
+            entity.position.z = Math.sign(entity.position.z) * halfBounds;
+            if (entity.userData.targetZ) {
+                entity.userData.targetZ = -entity.position.z * 0.8;
+            }
+        }
+    }
+    
+    /**
+     * Animate camera movement
+     */
+    function animateCamera(time) {
+        camera.position.x = Math.sin(time * 0.03) * 5;
+        camera.position.y = Math.sin(time * 0.015) * 5;
+        camera.lookAt(0, 0, 0);
+    }
+    
+    // Initialize if this is the active canvas
+    const canvas = document.getElementById('plankton-canvas');
+    if (canvas && canvas.classList.contains('active')) {
+        initialize();
+    }
 })();

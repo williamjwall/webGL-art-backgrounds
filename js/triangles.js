@@ -201,21 +201,21 @@
         for (let i = 0; i < K; i++) {
             // Force centroids to stay in different regions of the screen
             const regionAngle = (i / K) * Math.PI * 2;
-            const regionX = Math.cos(regionAngle) * 8; // Base position in region
-            const regionY = Math.sin(regionAngle) * 8;
+            const regionX = Math.cos(regionAngle) * 6; // Reduced from 8 to 6 for tighter clustering
+            const regionY = Math.sin(regionAngle) * 6;
             
             if (i === 0) {
-                // First centroid stays near center with gentle flowing motion
-                const time = performance.now() * 0.0005;
-                centroids[0].targetX = Math.sin(time * 0.2) * 3;
-                centroids[0].targetY = Math.cos(time * 0.3) * 3;
+                // First centroid stays near center with gentler flowing motion
+                const time = performance.now() * 0.0003; // Reduced from 0.0005 for slower movement
+                centroids[0].targetX = Math.sin(time * 0.2) * 2; // Reduced from 3 to 2
+                centroids[0].targetY = Math.cos(time * 0.3) * 2;
             } else if (clusterSums[i].count > 0) {
                 // Calculate average position
                 const avgX = clusterSums[i].x / clusterSums[i].count;
                 const avgY = clusterSums[i].y / clusterSums[i].count;
                 
                 // Limit how far the centroid can move from its home region
-                const maxDistance = 10;
+                const maxDistance = 7; // Reduced from 10 to 7
                 const dx = avgX - regionX;
                 const dy = avgY - regionY;
                 const dist = Math.sqrt(dx*dx + dy*dy);
@@ -230,9 +230,9 @@
                     centroids[i].targetY = avgY;
                 }
             } else {
-                // For empty clusters, move toward the region base position
-                centroids[i].targetX = regionX + (Math.random() * 2 - 1) * 3;
-                centroids[i].targetY = regionY + (Math.random() * 2 - 1) * 3;
+                // For empty clusters, move toward the region base position with less randomness
+                centroids[i].targetX = regionX + (Math.random() * 2 - 1) * 2; // Reduced from 3 to 2
+                centroids[i].targetY = regionY + (Math.random() * 2 - 1) * 2;
             }
         }
         
@@ -244,25 +244,18 @@
             const dy = centroids[i].targetY - centroids[i].y;
             
             // Add acceleration towards target - reduced spring factor for slower movement
-            const springFactor = 0.2; // Was 0.8, reduced for slower movement
+            const springFactor = 0.15; // Reduced from 0.2 for even slower movement
             centroids[i].vx += dx * springFactor * deltaTime;
             centroids[i].vy += dy * springFactor * deltaTime;
             
-            // Add some flowing motion - reduced flow factor
-            const flowTime = performance.now() * 0.0002; // Was 0.0005, reduced for slower flow
-            const flowFactor = 0.03; // Was 0.1, reduced for gentler flowing motion
-            centroids[i].vx += Math.sin(flowTime + i * 1.5) * flowFactor * deltaTime;
-            centroids[i].vy += Math.cos(flowTime + i * 1.5) * flowFactor * deltaTime;
-            
-            // Apply velocity to position with a scaling factor to slow down movement
-            const velocityScale = 0.5; // New parameter to directly scale down movement speed
-            centroids[i].x += centroids[i].vx * velocityScale;
-            centroids[i].y += centroids[i].vy * velocityScale;
-            
-            // Apply damping for smooth deceleration - increased slightly for more stability
-            const damping = 0.97; // Was 0.95, increased slightly
+            // Add more damping to prevent excessive movement
+            const damping = 0.92; // Increased from default for more stability
             centroids[i].vx *= damping;
             centroids[i].vy *= damping;
+            
+            // Update position
+            centroids[i].x += centroids[i].vx;
+            centroids[i].y += centroids[i].vy;
         }
     }
     
