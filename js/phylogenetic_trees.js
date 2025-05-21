@@ -1,4 +1,16 @@
 (function() {
+    // Create a namespace for this visualization
+    const PhylogeneticTrees = {
+        active: false,
+        animationId: null,
+        init: init,
+        stop: stopAnimation,
+        clearMemory: clearMemory
+    };
+    
+    // Expose to global scope
+    window.PhylogeneticTrees = PhylogeneticTrees;
+    
     // Initialize Three.js scene
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x001a2e); // Deep blue background
@@ -41,7 +53,7 @@
     scene.add(backLight);
     
     // Tree system properties - increased depth and capacity
-    const branches = [];
+    let branches = []; // Changed from const to let to allow reassignment during cleanup
     const maxBranchDepth = 40; // Much deeper for longer reach
     const maxBranches = 2000; // More branches
     
@@ -411,12 +423,27 @@
     
     // Initialize scene
     function init() {
+        console.log('Initializing PhylogeneticTrees visualization...');
+        const canvas = document.getElementById('phylogenetic-canvas');
+        if (!canvas) {
+            console.error('Canvas not found!');
+            return;
+        }
+        
+        // Start animation
+        PhylogeneticTrees.active = true;
+        // Start your phylogenetic tree animation here
+        // requestAnimationFrame(animate);
+        console.log('PhylogeneticTrees initialization complete');
+        
         createInitialBranches();
     }
     
     // Animation loop
     function animate() {
-        requestAnimationFrame(animate);
+        if (!PhylogeneticTrees.active) return;
+        
+        PhylogeneticTrees.animationId = requestAnimationFrame(animate);
         
         updateBranches();
         
@@ -440,4 +467,53 @@
     // Start the animation
     init();
     animate();
+    
+    function stopAnimation() {
+        console.log('Stopping PhylogeneticTrees animation...');
+        PhylogeneticTrees.active = false;
+        if (PhylogeneticTrees.animationId) {
+            cancelAnimationFrame(PhylogeneticTrees.animationId);
+            PhylogeneticTrees.animationId = null;
+        }
+    }
+    
+    function clearMemory() {
+        console.log('Clearing PhylogeneticTrees memory...');
+        stopAnimation();
+        
+        // Dispose of WebGL resources
+        if (scene) {
+            // Clear all branches from the scene
+            while (branches.length > 0) {
+                const branch = branches.pop();
+                if (branch && branch.mesh) {
+                    scene.remove(branch.mesh);
+                    if (branch.mesh.material) {
+                        branch.mesh.material.dispose();
+                    }
+                    if (branch.mesh.geometry) {
+                        branch.mesh.geometry.dispose();
+                    }
+                }
+            }
+            
+            // Clear the scene - safely remove remaining objects
+            const objectsToRemove = [...scene.children]; // Create a copy of the array
+            objectsToRemove.forEach(object => {
+                scene.remove(object);
+                // Dispose of materials and geometries if available
+                if (object.material) {
+                    if (Array.isArray(object.material)) {
+                        object.material.forEach(material => material.dispose());
+                    } else {
+                        object.material.dispose();
+                    }
+                }
+                if (object.geometry) object.geometry.dispose();
+            });
+        }
+        
+        // Clear branches array
+        branches = [];
+    }
 })(); 

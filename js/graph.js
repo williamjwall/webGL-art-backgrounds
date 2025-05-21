@@ -1,13 +1,17 @@
 (function() {
-    // Create a namespace for this visualization to avoid global conflicts
-    window.GraphNetwork = {
+    // Create a namespace for this visualization
+    const Graph = {
         active: false,
         animationId: null,
         init: init,
         stop: stopAnimation,
+        clearMemory: clearMemory,
         nodes: [],
         edges: []
     };
+    
+    // Expose to global scope
+    window.Graph = Graph;
     
     const canvas = document.getElementById('graph-canvas');
     if (!canvas) return; // Exit if canvas doesn't exist
@@ -24,8 +28,9 @@
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
     
-    const nodes = window.GraphNetwork.nodes;
-    const edges = window.GraphNetwork.edges;
+    // Now these will be properly defined
+    const nodes = Graph.nodes;
+    const edges = Graph.edges;
     const numNodes = 150; // More nodes for better coverage
     const maxDistance = 150;
     
@@ -39,18 +44,20 @@
     }
     
     function init() {
-        nodes.length = 0;
-        edges.length = 0;
+        console.log('Initializing Graph visualization...');
+        // Clear existing nodes and edges
+        Graph.nodes.length = 0;
+        Graph.edges.length = 0;
         
+        // Create new nodes
         for (let i = 0; i < numNodes; i++) {
-            nodes.push(createNode());
+            Graph.nodes.push(createNode());
         }
         
-        // Start animation only if not already running
-        if (!window.GraphNetwork.active) {
-            window.GraphNetwork.active = true;
-            animate();
-        }
+        // Start animation
+        Graph.active = true;
+        requestAnimationFrame(animate);
+        console.log('Graph initialization complete');
     }
     
     function createNode() {
@@ -67,7 +74,7 @@
     
     function update() {
         // Skip updates if not active
-        if (!window.GraphNetwork.active) return;
+        if (!Graph.active) return;
         
         // Get flow direction - slowly changing over time
         const time = Date.now() * 0.0001;
@@ -153,7 +160,7 @@
     
     function draw() {
         // Skip drawing if not active
-        if (!window.GraphNetwork.active) return;
+        if (!Graph.active) return;
         
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
@@ -185,20 +192,27 @@
     }
     
     function animate() {
-        // If not active, don't continue animation
-        if (!window.GraphNetwork.active) return;
+        if (!Graph.active) return;
         
         update();
         draw();
-        window.GraphNetwork.animationId = requestAnimationFrame(animate);
+        Graph.animationId = requestAnimationFrame(animate);
     }
     
     function stopAnimation() {
-        window.GraphNetwork.active = false;
-        if (window.GraphNetwork.animationId) {
-            cancelAnimationFrame(window.GraphNetwork.animationId);
-            window.GraphNetwork.animationId = null;
+        console.log('Stopping Graph animation...');
+        Graph.active = false;
+        if (Graph.animationId) {
+            cancelAnimationFrame(Graph.animationId);
+            Graph.animationId = null;
         }
+    }
+    
+    function clearMemory() {
+        console.log('Clearing Graph memory...');
+        stopAnimation();
+        // Additional cleanup code
+        // [Add any necessary cleanup code]
     }
     
     // Reinitialize when window is resized, but throttle to avoid memory spikes
@@ -207,7 +221,7 @@
         clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(() => {
             resizeCanvas();
-            if (window.GraphNetwork.active) {
+            if (Graph.active) {
                 init();
             }
         }, 500);
