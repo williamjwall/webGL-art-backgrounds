@@ -430,13 +430,34 @@
             return;
         }
         
-        // Start animation
+        // Ensure we're starting fresh
         PhylogeneticTrees.active = true;
-        // Start your phylogenetic tree animation here
-        // requestAnimationFrame(animate);
-        console.log('PhylogeneticTrees initialization complete');
         
-        createInitialBranches();
+        // Clear any existing animation
+        if (PhylogeneticTrees.animationId) {
+            cancelAnimationFrame(PhylogeneticTrees.animationId);
+            PhylogeneticTrees.animationId = null;
+        }
+        
+        // Reset growth state
+        growthState = {
+            phase: 'growing',
+            timer: 0,
+            growthDuration: 2000 + Math.random() * 4000,
+            recessDuration: 100 + Math.random() * 250,
+            maxRecedeDistance: 10 + Math.random() * 25,
+            recedeDownwardBias: 0.7
+        };
+        
+        // Create initial branches if none exist
+        if (branches.length === 0) {
+            createInitialBranches();
+        }
+        
+        // Start the animation loop
+        animate();
+        
+        console.log('PhylogeneticTrees initialization complete');
     }
     
     // Animation loop
@@ -463,10 +484,6 @@
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
     });
-    
-    // Start the animation
-    init();
-    animate();
     
     function stopAnimation() {
         console.log('Stopping PhylogeneticTrees animation...');
@@ -500,20 +517,35 @@
             // Clear the scene - safely remove remaining objects
             const objectsToRemove = [...scene.children]; // Create a copy of the array
             objectsToRemove.forEach(object => {
-                scene.remove(object);
-                // Dispose of materials and geometries if available
-                if (object.material) {
-                    if (Array.isArray(object.material)) {
-                        object.material.forEach(material => material.dispose());
-                    } else {
-                        object.material.dispose();
+                if (object !== ambientLight && object !== directionalLight && object !== backLight) {
+                    scene.remove(object);
+                    // Dispose of materials and geometries if available
+                    if (object.material) {
+                        if (Array.isArray(object.material)) {
+                            object.material.forEach(material => material.dispose());
+                        } else {
+                            object.material.dispose();
+                        }
                     }
+                    if (object.geometry) object.geometry.dispose();
                 }
-                if (object.geometry) object.geometry.dispose();
             });
         }
         
         // Clear branches array
         branches = [];
+        
+        // Reset growth state
+        growthState = {
+            phase: 'growing',
+            timer: 0,
+            growthDuration: 2000 + Math.random() * 4000,
+            recessDuration: 100 + Math.random() * 250,
+            maxRecedeDistance: 10 + Math.random() * 25,
+            recedeDownwardBias: 0.7
+        };
     }
+
+    // Initialize on load but don't start animation until explicitly called
+    createInitialBranches();
 })(); 
