@@ -41,7 +41,64 @@
         escapeRadius: 400, // Larger escape radius
         pulseTime: 0,
         visible: true, // Always visible now
-        alpha: 1.0
+        alpha: 1.0,
+        stuckTimer: 0,
+        lastPosition: { x: 0, y: 0, z: 0 },
+        stuckThreshold: 60, // frames before considering stuck
+        timeSinceLastHop: 0,
+        forceHopTimer: 0,
+        fallbackMovement: false,
+        // Added properties for better movement
+        isHopping: false,
+        hopProgress: 0,
+        hopOrigin: { x: 0, y: 0, z: 0 },
+        hopTarget: { x: 0, y: 0, z: 0 },
+        failedHopAttempts: 0,
+        // Motivation system for directional exploration
+        motivation: {
+            targetX: 0,
+            targetY: 0,
+            strength: 1.0, // How strongly motivated (0-1)
+            timeSinceUpdate: 0,
+            updateInterval: 300, // Frames between motivation updates
+            explorationRadius: 2000, // How far to set exploration targets
+            currentDirection: 0 // Current exploration angle
+        },
+        // Advanced movement system
+        movement: {
+            // Smooth interpolation
+            targetX: 0,
+            targetY: 0,
+            targetZ: 0,
+            smoothingFactor: 0.08, // How quickly to reach target position
+            
+            // Momentum and physics
+            momentum: { x: 0, y: 0, z: 0 },
+            friction: 0.92,
+            maxMomentum: 3.0,
+            
+            // Path planning
+            currentPath: [],
+            pathIndex: 0,
+            pathUpdateTimer: 0,
+            pathUpdateInterval: 120, // Frames between path recalculation
+            
+            // Behavioral states
+            behaviorState: 'exploring', // 'exploring', 'escaping', 'investigating', 'resting'
+            behaviorTimer: 0,
+            behaviorDuration: 0,
+            
+            // Surface navigation
+            currentSurface: null,
+            surfaceNormal: { x: 0, y: 0, z: 1 },
+            surfaceConfidence: 0, // How confident we are about current surface
+            
+            // Intelligent decision making
+            decisionCooldown: 0,
+            lastDecisionTime: 0,
+            explorationHistory: [], // Track where we've been
+            historyMaxLength: 50
+        }
     };
 
     // Autonomous camera explorer with zoom
@@ -230,15 +287,49 @@
     }
 
     function placeHiddenCube() {
-        // Place the cube somewhere among the structures
-        const randomBox = boxes[Math.floor(Math.random() * boxes.length)];
-        hiddenCube.x = randomBox.x + (Math.random() - 0.5) * 300;
-        hiddenCube.y = randomBox.y + (Math.random() - 0.5) * 300;
-        hiddenCube.z = randomBox.z + Math.random() * 100;
+        // Find boxes above a certain height to ensure cube is placed on a visible surface
+        const eligibleBoxes = boxes.filter(box => box.z + box.height > 50);
+        
+        // If no eligible boxes found, fall back to any box
+        const boxPool = eligibleBoxes.length > 0 ? eligibleBoxes : boxes;
+        
+        // Place the cube directly on top of a box, not offset from it
+        const randomBox = boxPool[Math.floor(Math.random() * boxPool.length)];
+        
+        // Place directly on top, with just a small random offset within the box boundaries
+        hiddenCube.x = randomBox.x + (Math.random() - 0.5) * (randomBox.width * 0.5);
+        hiddenCube.y = randomBox.y + (Math.random() - 0.5) * (randomBox.depth * 0.5);
+        hiddenCube.z = randomBox.z + randomBox.height + hiddenCube.size / 2;
+        
+        // Reset movement state
+        hiddenCube.velocityX = 0;
+        hiddenCube.velocityY = 0;
+        hiddenCube.velocityZ = 0;
+        hiddenCube.isHopping = false;
+        hiddenCube.stuckTimer = 0;
+        hiddenCube.failedHopAttempts = 0;
+        
+        // Initialize motivation system with a random direction
+        hiddenCube.motivation.currentDirection = Math.random() * Math.PI * 2;
+        const distance = hiddenCube.motivation.explorationRadius * (0.7 + Math.random() * 0.3);
+        hiddenCube.motivation.targetX = hiddenCube.x + Math.cos(hiddenCube.motivation.currentDirection) * distance;
+        hiddenCube.motivation.targetY = hiddenCube.y + Math.sin(hiddenCube.motivation.currentDirection) * distance;
+        hiddenCube.motivation.strength = 0.8 + Math.random() * 0.2; // Start with strong motivation
+        hiddenCube.motivation.timeSinceUpdate = 0;
+        
+        // Store initial position to detect if it gets stuck later
+        hiddenCube.lastPosition = { 
+            x: hiddenCube.x, 
+            y: hiddenCube.y, 
+            z: hiddenCube.z 
+        };
         
         // Initialize visibility state
         hiddenCube.visible = true;
         hiddenCube.alpha = 1.0;
+        
+        console.log(`Cube placed at: ${hiddenCube.x.toFixed(0)}, ${hiddenCube.y.toFixed(0)}, ${hiddenCube.z.toFixed(0)} on box with height ${randomBox.height}`);
+        console.log(`Initial motivation: direction ${(hiddenCube.motivation.currentDirection * 180 / Math.PI).toFixed(0)}°, target (${hiddenCube.motivation.targetX.toFixed(0)}, ${hiddenCube.motivation.targetY.toFixed(0)})`);
     }
 
     // Convert 3D coordinates to 2D isometric view with zoom
@@ -250,20 +341,408 @@
         return iso;
     }
 
-    function updateHiddenCube() {
+    function updateCubeMotivation() {
+        hiddenCube.motivation.timeSinceUpdate++;
+        
+        // Update motivation target periodically or when first starting
+        if (hiddenCube.motivation.timeSinceUpdate >= hiddenCube.motivation.updateInterval || 
+            (hiddenCube.motivation.targetX === 0 && hiddenCube.motivation.targetY === 0)) {
+            
+            // Choose a new random direction to explore
+            hiddenCube.motivation.currentDirection = Math.random() * Math.PI * 2;
+            
+            // Set target position in that direction
+            const distance = hiddenCube.motivation.explorationRadius * (0.5 + Math.random() * 0.5);
+            hiddenCube.motivation.targetX = hiddenCube.x + Math.cos(hiddenCube.motivation.currentDirection) * distance;
+            hiddenCube.motivation.targetY = hiddenCube.y + Math.sin(hiddenCube.motivation.currentDirection) * distance;
+            
+            // Reset timer and set motivation strength
+            hiddenCube.motivation.timeSinceUpdate = 0;
+            hiddenCube.motivation.strength = 0.7 + Math.random() * 0.3; // Random strength between 0.7-1.0
+            
+            console.log(`Cube new motivation: direction ${(hiddenCube.motivation.currentDirection * 180 / Math.PI).toFixed(0)}°, target (${hiddenCube.motivation.targetX.toFixed(0)}, ${hiddenCube.motivation.targetY.toFixed(0)})`);
+        }
+        
+        // Gradually reduce motivation strength over time
+        hiddenCube.motivation.strength *= 0.998;
+        
+        // If we're close to the target, reduce motivation faster
+        const distanceToTarget = Math.hypot(
+            hiddenCube.motivation.targetX - hiddenCube.x,
+            hiddenCube.motivation.targetY - hiddenCube.y
+        );
+        
+        if (distanceToTarget < 300) {
+            hiddenCube.motivation.strength *= 0.95; // Faster decay when near target
+        }
+    }
+
+    // Advanced pathfinding algorithm
+    function findOptimalPath(startX, startY, startZ, targetX, targetY, maxDistance = 800) {
+        const path = [];
+        const stepSize = 150; // Distance between path nodes
+        const maxSteps = Math.floor(maxDistance / stepSize);
+        
+        // Find suitable boxes for path nodes
+        const availableBoxes = boxes.filter(box => {
+            const distance = Math.hypot(box.x - startX, box.y - startY);
+            return distance < maxDistance && box.z + box.height > startZ - 200;
+        });
+        
+        if (availableBoxes.length === 0) return path;
+        
+        // Sort boxes by a combination of distance to target and accessibility
+        availableBoxes.sort((a, b) => {
+            const distToTargetA = Math.hypot(a.x - targetX, a.y - targetY);
+            const distToTargetB = Math.hypot(b.x - targetX, b.y - targetY);
+            const distFromStartA = Math.hypot(a.x - startX, a.y - startY);
+            const distFromStartB = Math.hypot(b.x - startX, b.y - startY);
+            
+            // Prefer boxes that are closer to target but not too far from current position
+            const scoreA = distToTargetA + distFromStartA * 0.3;
+            const scoreB = distToTargetB + distFromStartB * 0.3;
+            
+            return scoreA - scoreB;
+        });
+        
+        // Build path using A* inspired algorithm
+        let currentPos = { x: startX, y: startY, z: startZ };
+        
+        for (let step = 0; step < maxSteps && availableBoxes.length > 0; step++) {
+            let bestBox = null;
+            let bestScore = Infinity;
+            
+            for (let i = 0; i < Math.min(5, availableBoxes.length); i++) {
+                const box = availableBoxes[i];
+                const distFromCurrent = Math.hypot(box.x - currentPos.x, box.y - currentPos.y);
+                const distToTarget = Math.hypot(box.x - targetX, box.y - targetY);
+                const heightDiff = Math.abs(box.z + box.height - currentPos.z);
+                
+                // Score based on progress toward target and accessibility
+                const score = distToTarget + heightDiff * 0.5 + distFromCurrent * 0.2;
+                
+                if (score < bestScore && distFromCurrent < stepSize * 2) {
+                    bestScore = score;
+                    bestBox = box;
+                }
+            }
+            
+            if (bestBox) {
+                path.push({
+                    x: bestBox.x + (Math.random() - 0.5) * bestBox.width * 0.6,
+                    y: bestBox.y + (Math.random() - 0.5) * bestBox.depth * 0.6,
+                    z: bestBox.z + bestBox.height + hiddenCube.size / 2,
+                    box: bestBox
+                });
+                
+                currentPos = path[path.length - 1];
+                
+                // Remove used box from available options
+                const boxIndex = availableBoxes.indexOf(bestBox);
+                availableBoxes.splice(boxIndex, 1);
+            } else {
+                break;
+            }
+        }
+        
+        return path;
+    }
+
+    // Behavioral AI system
+    function updateBehaviorState() {
+        const movement = hiddenCube.movement;
         const distanceToCamera = Math.hypot(camera.x - hiddenCube.x, camera.y - hiddenCube.y);
         
-        // Find the structure the cube is currently on or nearest to
+        movement.behaviorTimer++;
+        
+        // Check for behavior transitions
+        switch (movement.behaviorState) {
+            case 'exploring':
+                // Switch to escaping if camera gets too close
+                if (distanceToCamera < hiddenCube.escapeRadius) {
+                    movement.behaviorState = 'escaping';
+                    movement.behaviorTimer = 0;
+                    movement.behaviorDuration = 180 + Math.random() * 120; // 3-5 seconds
+                    console.log('Cube behavior: ESCAPING');
+                }
+                // Occasionally switch to investigating
+                else if (Math.random() < 0.003 && movement.behaviorTimer > 300) {
+                    movement.behaviorState = 'investigating';
+                    movement.behaviorTimer = 0;
+                    movement.behaviorDuration = 240 + Math.random() * 180; // 4-7 seconds
+                    console.log('Cube behavior: INVESTIGATING');
+                }
+                break;
+                
+            case 'escaping':
+                // Return to exploring when far enough or time runs out
+                if (distanceToCamera > hiddenCube.escapeRadius * 1.5 || movement.behaviorTimer > movement.behaviorDuration) {
+                    movement.behaviorState = 'exploring';
+                    movement.behaviorTimer = 0;
+                    console.log('Cube behavior: EXPLORING');
+                }
+                break;
+                
+            case 'investigating':
+                // Return to exploring after investigation time
+                if (movement.behaviorTimer > movement.behaviorDuration) {
+                    movement.behaviorState = 'exploring';
+                    movement.behaviorTimer = 0;
+                    console.log('Cube behavior: EXPLORING');
+                }
+                // Switch to escaping if camera approaches during investigation
+                else if (distanceToCamera < hiddenCube.escapeRadius * 0.7) {
+                    movement.behaviorState = 'escaping';
+                    movement.behaviorTimer = 0;
+                    movement.behaviorDuration = 120 + Math.random() * 60;
+                    console.log('Cube behavior: ESCAPING (interrupted investigation)');
+                }
+                break;
+                
+            case 'resting':
+                // Return to exploring after rest
+                if (movement.behaviorTimer > movement.behaviorDuration) {
+                    movement.behaviorState = 'exploring';
+                    movement.behaviorTimer = 0;
+                    console.log('Cube behavior: EXPLORING');
+                }
+                break;
+        }
+    }
+
+    // Smooth movement with momentum
+    function applySmoothMovement() {
+        const movement = hiddenCube.movement;
+        
+        // Calculate desired movement based on behavior
+        let desiredVelX = 0, desiredVelY = 0, desiredVelZ = 0;
+        
+        switch (movement.behaviorState) {
+            case 'exploring':
+                // Move toward motivation target with path following
+                if (movement.currentPath.length > 0 && movement.pathIndex < movement.currentPath.length) {
+                    const targetNode = movement.currentPath[movement.pathIndex];
+                    const distToNode = Math.hypot(targetNode.x - hiddenCube.x, targetNode.y - hiddenCube.y);
+                    
+                    if (distToNode < 50) {
+                        movement.pathIndex++;
+                    }
+                    
+                    if (movement.pathIndex < movement.currentPath.length) {
+                        const currentTarget = movement.currentPath[movement.pathIndex];
+                        const dirX = currentTarget.x - hiddenCube.x;
+                        const dirY = currentTarget.y - hiddenCube.y;
+                        const dirZ = currentTarget.z - hiddenCube.z;
+                        const distance = Math.sqrt(dirX*dirX + dirY*dirY + dirZ*dirZ);
+                        
+                        if (distance > 0) {
+                            const speed = 0.8;
+                            desiredVelX = (dirX / distance) * speed;
+                            desiredVelY = (dirY / distance) * speed;
+                            desiredVelZ = (dirZ / distance) * speed * 0.3; // Slower Z movement
+                        }
+                    }
+                } else {
+                    // Direct movement toward motivation target
+                    const dirX = hiddenCube.motivation.targetX - hiddenCube.x;
+                    const dirY = hiddenCube.motivation.targetY - hiddenCube.y;
+                    const distance = Math.sqrt(dirX*dirX + dirY*dirY);
+                    
+                    if (distance > 0) {
+                        const speed = 0.5 * hiddenCube.motivation.strength;
+                        desiredVelX = (dirX / distance) * speed;
+                        desiredVelY = (dirY / distance) * speed;
+                    }
+                }
+                break;
+                
+            case 'escaping':
+                // Move away from camera with urgency
+                const escapeAngle = Math.atan2(hiddenCube.y - camera.y, hiddenCube.x - camera.x);
+                const escapeSpeed = 1.2;
+                desiredVelX = Math.cos(escapeAngle) * escapeSpeed;
+                desiredVelY = Math.sin(escapeAngle) * escapeSpeed;
+                
+                // Add some randomness to escape direction
+                desiredVelX += (Math.random() - 0.5) * 0.4;
+                desiredVelY += (Math.random() - 0.5) * 0.4;
+                break;
+                
+            case 'investigating':
+                // Slow, careful movement with pauses
+                if (movement.behaviorTimer % 60 < 30) { // Move for half the time
+                    const investigateAngle = Math.random() * Math.PI * 2;
+                    const investigateSpeed = 0.2;
+                    desiredVelX = Math.cos(investigateAngle) * investigateSpeed;
+                    desiredVelY = Math.sin(investigateAngle) * investigateSpeed;
+                }
+                break;
+                
+            case 'resting':
+                // Minimal movement
+                desiredVelX = (Math.random() - 0.5) * 0.1;
+                desiredVelY = (Math.random() - 0.5) * 0.1;
+                break;
+        }
+        
+        // Apply momentum-based movement
+        movement.momentum.x += (desiredVelX - movement.momentum.x) * 0.15;
+        movement.momentum.y += (desiredVelY - movement.momentum.y) * 0.15;
+        movement.momentum.z += (desiredVelZ - movement.momentum.z) * 0.1;
+        
+        // Apply friction
+        movement.momentum.x *= movement.friction;
+        movement.momentum.y *= movement.friction;
+        movement.momentum.z *= movement.friction;
+        
+        // Limit maximum momentum
+        const momentumMagnitude = Math.sqrt(
+            movement.momentum.x * movement.momentum.x + 
+            movement.momentum.y * movement.momentum.y
+        );
+        
+        if (momentumMagnitude > movement.maxMomentum) {
+            const scale = movement.maxMomentum / momentumMagnitude;
+            movement.momentum.x *= scale;
+            movement.momentum.y *= scale;
+        }
+        
+        // Apply movement to cube position
+        hiddenCube.velocityX = movement.momentum.x;
+        hiddenCube.velocityY = movement.momentum.y;
+        hiddenCube.velocityZ = movement.momentum.z;
+    }
+
+    // Update exploration history
+    function updateExplorationHistory() {
+        const movement = hiddenCube.movement;
+        
+        // Add current position to history every few frames
+        if (movement.behaviorTimer % 30 === 0) {
+            movement.explorationHistory.push({
+                x: hiddenCube.x,
+                y: hiddenCube.y,
+                z: hiddenCube.z,
+                time: Date.now()
+            });
+            
+            // Limit history length
+            if (movement.explorationHistory.length > movement.historyMaxLength) {
+                movement.explorationHistory.shift();
+            }
+        }
+    }
+
+    function updateHiddenCube() {
+        // Update all AI systems
+        updateCubeMotivation();
+        updateBehaviorState();
+        updateExplorationHistory();
+        
+        const movement = hiddenCube.movement;
+        
+        // Check if cube is stuck by comparing current position to last position
+        const movementDelta = Math.hypot(
+            hiddenCube.x - hiddenCube.lastPosition.x,
+            hiddenCube.y - hiddenCube.lastPosition.y,
+            hiddenCube.z - hiddenCube.lastPosition.z
+        );
+        
+        // Advanced stuck detection
+        if (movementDelta < 0.05 && !hiddenCube.isHopping) {
+            hiddenCube.stuckTimer++;
+            if (hiddenCube.stuckTimer > 20) { // Faster response to being stuck
+                console.log("Cube stuck, initiating emergency pathfinding");
+                // Clear current path and force new pathfinding
+                movement.currentPath = [];
+                movement.pathIndex = 0;
+                movement.pathUpdateTimer = movement.pathUpdateInterval;
+                hiddenCube.stuckTimer = 0;
+                
+                // Switch to escaping behavior temporarily
+                movement.behaviorState = 'escaping';
+                movement.behaviorTimer = 0;
+                movement.behaviorDuration = 120;
+            }
+        } else {
+            hiddenCube.stuckTimer = 0;
+        }
+        
+        // Update last position
+        hiddenCube.lastPosition = { 
+            x: hiddenCube.x, 
+            y: hiddenCube.y, 
+            z: hiddenCube.z 
+        };
+        
+        // Handle hopping animation if in progress
+        if (hiddenCube.isHopping) {
+            hiddenCube.hopProgress += 0.06; // Slightly faster hop animation
+            
+            if (hiddenCube.hopProgress >= 1) {
+                // Hop complete
+                hiddenCube.x = hiddenCube.hopTarget.x;
+                hiddenCube.y = hiddenCube.hopTarget.y;
+                hiddenCube.z = hiddenCube.hopTarget.z;
+                hiddenCube.isHopping = false;
+                hiddenCube.hopProgress = 0;
+                hiddenCube.timeSinceLastHop = 0;
+                
+                // Reset momentum after hop
+                movement.momentum = { x: 0, y: 0, z: 0 };
+                return;
+            }
+            
+            // Smooth easing for hop animation with overshoot
+            const t = hiddenCube.hopProgress;
+            const ease = 1 - Math.pow(1 - t, 3); // Cubic ease-out
+            
+            // Dynamic hop height based on distance
+            const hopDistance = Math.hypot(
+                hiddenCube.hopTarget.x - hiddenCube.hopOrigin.x,
+                hiddenCube.hopTarget.y - hiddenCube.hopOrigin.y
+            );
+            const hopHeight = Math.sin(t * Math.PI) * Math.min(100, hopDistance * 0.3);
+            
+            // Interpolate position with smooth curves
+            hiddenCube.x = hiddenCube.hopOrigin.x + (hiddenCube.hopTarget.x - hiddenCube.hopOrigin.x) * ease;
+            hiddenCube.y = hiddenCube.hopOrigin.y + (hiddenCube.hopTarget.y - hiddenCube.hopOrigin.y) * ease;
+            hiddenCube.z = hiddenCube.hopOrigin.z + (hiddenCube.hopTarget.z - hiddenCube.hopOrigin.z) * ease + hopHeight;
+            
+            return; // Skip normal movement while hopping
+        }
+        
+        // Increment time since last hop
+        hiddenCube.timeSinceLastHop++;
+        
+        // Update pathfinding
+        movement.pathUpdateTimer++;
+        if (movement.pathUpdateTimer >= movement.pathUpdateInterval || movement.currentPath.length === 0) {
+            movement.pathUpdateTimer = 0;
+            
+            // Generate new path toward motivation target
+            const newPath = findOptimalPath(
+                hiddenCube.x, hiddenCube.y, hiddenCube.z,
+                hiddenCube.motivation.targetX, hiddenCube.motivation.targetY
+            );
+            
+            if (newPath.length > 0) {
+                movement.currentPath = newPath;
+                movement.pathIndex = 0;
+                console.log(`Generated new path with ${newPath.length} nodes`);
+            }
+        }
+        
+        // Find current surface for physics
         let currentStructure = null;
         let minDistance = Infinity;
         
-        // Find nearby boxes to consider for movement
         const nearbyBoxes = boxes.filter(box => {
             const distance = Math.hypot(box.x - hiddenCube.x, box.y - hiddenCube.y);
-            return distance < 300; // Check boxes within 300 units
+            return distance < 500; // Larger search radius for better surface detection
         });
         
-        // Find the closest structure surface the cube should be on
+        // Advanced surface detection
         for (const box of nearbyBoxes) {
             const boxLeft = box.x - box.width / 2;
             const boxRight = box.x + box.width / 2;
@@ -271,11 +750,11 @@
             const boxBottom = box.y + box.depth / 2;
             const boxZTop = box.z + box.height;
             
-            // Check if cube is above this box (on top surface)
-            if (hiddenCube.x >= boxLeft - 10 && hiddenCube.x <= boxRight + 10 &&
-                hiddenCube.y >= boxTop - 10 && hiddenCube.y <= boxBottom + 10) {
+            // More lenient surface detection
+            if (hiddenCube.x >= boxLeft - 30 && hiddenCube.x <= boxRight + 30 &&
+                hiddenCube.y >= boxTop - 30 && hiddenCube.y <= boxBottom + 30) {
                 const distanceToTop = Math.abs(hiddenCube.z - boxZTop);
-                if (distanceToTop < minDistance) {
+                if (distanceToTop < minDistance && distanceToTop < 50) {
                     minDistance = distanceToTop;
                     currentStructure = {
                         box: box,
@@ -284,212 +763,109 @@
                     };
                 }
             }
-            
-            // Check side surfaces if cube is at the right height
-            if (hiddenCube.z >= box.z && hiddenCube.z <= boxZTop + 20) {
-                // Left side
-                if (Math.abs(hiddenCube.x - boxLeft) < 15 &&
-                    hiddenCube.y >= boxTop - 10 && hiddenCube.y <= boxBottom + 10) {
-                    const distance = Math.abs(hiddenCube.x - boxLeft);
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        currentStructure = {
-                            box: box,
-                            surface: 'left',
-                            targetX: boxLeft - hiddenCube.size / 2
-                        };
-                    }
-                }
-                
-                // Right side
-                if (Math.abs(hiddenCube.x - boxRight) < 15 &&
-                    hiddenCube.y >= boxTop - 10 && hiddenCube.y <= boxBottom + 10) {
-                    const distance = Math.abs(hiddenCube.x - boxRight);
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        currentStructure = {
-                            box: box,
-                            surface: 'right',
-                            targetX: boxRight + hiddenCube.size / 2
-                        };
-                    }
-                }
-                
-                // Front side
-                if (Math.abs(hiddenCube.y - boxTop) < 15 &&
-                    hiddenCube.x >= boxLeft - 10 && hiddenCube.x <= boxRight + 10) {
-                    const distance = Math.abs(hiddenCube.y - boxTop);
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        currentStructure = {
-                            box: box,
-                            surface: 'front',
-                            targetY: boxTop - hiddenCube.size / 2
-                        };
-                    }
-                }
-                
-                // Back side
-                if (Math.abs(hiddenCube.y - boxBottom) < 15 &&
-                    hiddenCube.x >= boxLeft - 10 && hiddenCube.x <= boxRight + 10) {
-                    const distance = Math.abs(hiddenCube.y - boxBottom);
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        currentStructure = {
-                            box: box,
-                            surface: 'back',
-                            targetY: boxBottom + hiddenCube.size / 2
-                        };
-                    }
-                }
-            }
         }
         
-        // If no structure found nearby, find the closest one to hop to
-        if (!currentStructure || minDistance > 50) {
-            let closestBox = null;
-            let closestDistance = Infinity;
-            
-            for (const box of boxes) {
+        movement.currentSurface = currentStructure;
+        
+        // Intelligent hopping decision
+        const shouldHop = (
+            (movement.currentPath.length === 0 && Math.random() < 0.01) || // Random exploration hop
+            (hiddenCube.timeSinceLastHop > 300 && Math.random() < 0.02) || // Time-based hop
+            (movement.behaviorState === 'escaping' && Math.random() < 0.03) || // Escape hop
+            (!currentStructure && hiddenCube.z < -100) // Emergency hop if falling
+        );
+        
+        if (shouldHop && !hiddenCube.isHopping) {
+            // Find suitable hop target
+            const availableBoxes = boxes.filter(box => {
                 const distance = Math.hypot(box.x - hiddenCube.x, box.y - hiddenCube.y);
-                if (distance < closestDistance && distance < 800) { // Only consider boxes within hopping range
-                    closestDistance = distance;
-                    closestBox = box;
+                return distance < 1200 && box.z + box.height > hiddenCube.z - 200;
+            });
+            
+            if (availableBoxes.length > 0) {
+                // Smart target selection based on behavior
+                let targetBox;
+                
+                if (movement.behaviorState === 'escaping') {
+                    // Choose box furthest from camera
+                    availableBoxes.sort((a, b) => {
+                        const distA = Math.hypot(a.x - camera.x, a.y - camera.y);
+                        const distB = Math.hypot(b.x - camera.x, b.y - camera.y);
+                        return distB - distA;
+                    });
+                    targetBox = availableBoxes[Math.floor(Math.random() * Math.min(3, availableBoxes.length))];
+                } else {
+                    // Choose box closer to motivation target
+                    availableBoxes.sort((a, b) => {
+                        const distA = Math.hypot(a.x - hiddenCube.motivation.targetX, a.y - hiddenCube.motivation.targetY);
+                        const distB = Math.hypot(b.x - hiddenCube.motivation.targetX, b.y - hiddenCube.motivation.targetY);
+                        return distA - distB;
+                    });
+                    targetBox = availableBoxes[Math.floor(Math.random() * Math.min(5, availableBoxes.length))];
                 }
-            }
-            
-            if (closestBox) {
-                // Hop to the top of the closest structure
-                const hopSpeed = 0.05;
-                const targetX = closestBox.x + (Math.random() - 0.5) * closestBox.width * 0.8;
-                const targetY = closestBox.y + (Math.random() - 0.5) * closestBox.depth * 0.8;
-                const targetZ = closestBox.z + closestBox.height + hiddenCube.size / 2;
                 
-                hiddenCube.x += (targetX - hiddenCube.x) * hopSpeed;
-                hiddenCube.y += (targetY - hiddenCube.y) * hopSpeed;
-                hiddenCube.z += (targetZ - hiddenCube.z) * hopSpeed;
+                // Initiate smooth hop
+                hiddenCube.isHopping = true;
+                hiddenCube.hopProgress = 0;
+                hiddenCube.hopOrigin = {
+                    x: hiddenCube.x,
+                    y: hiddenCube.y,
+                    z: hiddenCube.z
+                };
                 
-                return; // Skip normal movement while hopping
+                hiddenCube.hopTarget = {
+                    x: targetBox.x + (Math.random() - 0.5) * (targetBox.width * 0.8),
+                    y: targetBox.y + (Math.random() - 0.5) * (targetBox.depth * 0.8),
+                    z: targetBox.z + targetBox.height + hiddenCube.size / 2
+                };
+                
+                console.log(`Smart hop to: ${hiddenCube.hopTarget.x.toFixed(0)}, ${hiddenCube.hopTarget.y.toFixed(0)} (${movement.behaviorState})`);
+                return;
             }
         }
         
-        // Snap to the current structure surface
-        if (currentStructure) {
-            const snapSpeed = 0.1;
+        // Apply physics
+        if (!currentStructure && !hiddenCube.isHopping) {
+            // Gravity with air resistance
+            hiddenCube.velocityZ -= 0.12;
+            hiddenCube.velocityZ *= 0.98; // Air resistance
             
-            switch (currentStructure.surface) {
-                case 'top':
-                    hiddenCube.z += (currentStructure.targetZ - hiddenCube.z) * snapSpeed;
-                    break;
-                case 'left':
-                    hiddenCube.x += (currentStructure.targetX - hiddenCube.x) * snapSpeed;
-                    break;
-                case 'right':
-                    hiddenCube.x += (currentStructure.targetX - hiddenCube.x) * snapSpeed;
-                    break;
-                case 'front':
-                    hiddenCube.y += (currentStructure.targetY - hiddenCube.y) * snapSpeed;
-                    break;
-                case 'back':
-                    hiddenCube.y += (currentStructure.targetY - hiddenCube.y) * snapSpeed;
-                    break;
+            if (hiddenCube.z < -500) {
+                console.log("Cube fell below world, emergency relocation");
+                placeHiddenCube();
+                return;
             }
+        } else if (currentStructure) {
+            // Smooth surface snapping
+            const snapSpeed = 0.2;
+            const targetZ = currentStructure.targetZ;
+            hiddenCube.z += (targetZ - hiddenCube.z) * snapSpeed;
+            hiddenCube.velocityZ *= 0.7; // Dampen Z velocity on surface
         }
         
-        // Movement along structure surfaces
-        if (currentStructure) {
-            // Random movement along the surface
-            const moveSpeed = 0.3;
-            const randomDirection = Math.random() * Math.PI * 2;
-            
-            // Gentle escape behavior when camera gets close
-            let moveX = Math.cos(randomDirection) * moveSpeed;
-            let moveY = Math.sin(randomDirection) * moveSpeed;
-            
-            if (distanceToCamera < hiddenCube.escapeRadius) {
-                const escapeAngle = Math.atan2(hiddenCube.y - camera.y, hiddenCube.x - camera.x);
-                moveX += Math.cos(escapeAngle) * 0.5;
-                moveY += Math.sin(escapeAngle) * 0.5;
-            }
-            
-            // Apply movement based on surface type
-            const box = currentStructure.box;
-            const boxLeft = box.x - box.width / 2;
-            const boxRight = box.x + box.width / 2;
-            const boxTop = box.y - box.depth / 2;
-            const boxBottom = box.y + box.depth / 2;
-            
-            switch (currentStructure.surface) {
-                case 'top':
-                    // Move freely on top surface, but stay within bounds
-                    const newX = hiddenCube.x + moveX;
-                    const newY = hiddenCube.y + moveY;
-                    
-                    if (newX >= boxLeft + hiddenCube.size/2 && newX <= boxRight - hiddenCube.size/2) {
-                        hiddenCube.x = newX;
-                    }
-                    if (newY >= boxTop + hiddenCube.size/2 && newY <= boxBottom - hiddenCube.size/2) {
-                        hiddenCube.y = newY;
-                    }
-                    break;
-                    
-                case 'left':
-                case 'right':
-                    // Move along Y axis and Z axis on side surfaces
-                    const newYSide = hiddenCube.y + moveY;
-                    const newZSide = hiddenCube.z + moveX; // Use moveX for Z movement
-                    
-                    if (newYSide >= boxTop + hiddenCube.size/2 && newYSide <= boxBottom - hiddenCube.size/2) {
-                        hiddenCube.y = newYSide;
-                    }
-                    if (newZSide >= box.z + hiddenCube.size/2 && newZSide <= box.z + box.height - hiddenCube.size/2) {
-                        hiddenCube.z = newZSide;
-                    }
-                    break;
-                    
-                case 'front':
-                case 'back':
-                    // Move along X axis and Z axis on front/back surfaces
-                    const newXFront = hiddenCube.x + moveX;
-                    const newZFront = hiddenCube.z + moveY; // Use moveY for Z movement
-                    
-                    if (newXFront >= boxLeft + hiddenCube.size/2 && newXFront <= boxRight - hiddenCube.size/2) {
-                        hiddenCube.x = newXFront;
-                    }
-                    if (newZFront >= box.z + hiddenCube.size/2 && newZFront <= box.z + box.height - hiddenCube.size/2) {
-                        hiddenCube.z = newZFront;
-                    }
-                    break;
-            }
-            
-            // Occasionally decide to move to an adjacent structure
-            if (Math.random() < 0.005) { // 0.5% chance per frame
-                // Look for adjacent structures to move to
-                const adjacentBoxes = nearbyBoxes.filter(otherBox => {
-                    if (otherBox === box) return false;
-                    const distance = Math.hypot(otherBox.x - box.x, otherBox.y - box.y);
-                    return distance < 150; // Adjacent if within 150 units
-                });
-                
-                if (adjacentBoxes.length > 0) {
-                    const targetBox = adjacentBoxes[Math.floor(Math.random() * adjacentBoxes.length)];
-                    // Start hopping to the adjacent structure
-                    currentStructure = null; // This will trigger the hopping logic above
-                }
-            }
-        }
+        // Apply the new smooth movement system
+        applySmoothMovement();
         
-        // Keep cube in reasonable world bounds
-        const worldSize = canvas.width * 4;
+        // Apply velocities with smooth interpolation
+        hiddenCube.x += hiddenCube.velocityX;
+        hiddenCube.y += hiddenCube.velocityY;
+        hiddenCube.z += hiddenCube.velocityZ;
+        
+        // World bounds with smooth wrapping
+        const worldSize = canvas.width * 6;
         if (Math.abs(hiddenCube.x) > worldSize) {
-            hiddenCube.x = Math.sign(hiddenCube.x) * worldSize * 0.9;
+            hiddenCube.x = Math.sign(hiddenCube.x) * worldSize * 0.95;
+            movement.momentum.x *= -0.5; // Bounce back with reduced momentum
         }
         if (Math.abs(hiddenCube.y) > worldSize) {
-            hiddenCube.y = Math.sign(hiddenCube.y) * worldSize * 0.9;
+            hiddenCube.y = Math.sign(hiddenCube.y) * worldSize * 0.95;
+            movement.momentum.y *= -0.5; // Bounce back with reduced momentum
         }
         
-        // Update pulse animation
-        hiddenCube.pulseTime += 0.05;
+        // Update pulse animation with behavior-based variation
+        const pulseSpeed = movement.behaviorState === 'escaping' ? 0.08 : 
+                          movement.behaviorState === 'investigating' ? 0.03 : 0.05;
+        hiddenCube.pulseTime += pulseSpeed;
     }
 
     function updateCamera() {
@@ -675,7 +1051,7 @@
         const distance = Math.hypot(camera.x - hiddenCube.x, camera.y - hiddenCube.y);
         ctx.fillText(`Distance: ${distance.toFixed(0)}`, 10, 65);
         
-        ctx.fillText('CUBE DRIFTING & EXPLORING', 10, 80);
+        ctx.fillText('CUBE EXPLORING WITH PURPOSE', 10, 80);
         
         // Show cube status
         const cubeSpeed = Math.hypot(hiddenCube.velocityX, hiddenCube.velocityY);
@@ -683,12 +1059,21 @@
         ctx.fillText(`Cube Speed: ${cubeSpeed.toFixed(2)}`, 10, 95);
         ctx.fillText(`Cube Z: ${hiddenCube.z.toFixed(0)}`, 10, 110);
         
+        // Show motivation info
+        const motivationDirection = (hiddenCube.motivation.currentDirection * 180 / Math.PI).toFixed(0);
+        const motivationDistance = Math.hypot(
+            hiddenCube.motivation.targetX - hiddenCube.x,
+            hiddenCube.motivation.targetY - hiddenCube.y
+        ).toFixed(0);
+        ctx.fillText(`Motivation: ${motivationDirection}° (${(hiddenCube.motivation.strength * 100).toFixed(0)}%)`, 10, 125);
+        ctx.fillText(`Target Distance: ${motivationDistance}`, 10, 140);
+        
         // Show nearby environment interactions
         const nearbyBoxCount = boxes.filter(box => {
             const dist = Math.hypot(box.x - hiddenCube.x, box.y - hiddenCube.y);
             return dist < 200;
         }).length;
-        ctx.fillText(`Nearby Structures: ${nearbyBoxCount}`, 10, 125);
+        ctx.fillText(`Nearby Structures: ${nearbyBoxCount}`, 10, 155);
     }
 
     function animate() {

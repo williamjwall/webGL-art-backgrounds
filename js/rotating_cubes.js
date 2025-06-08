@@ -147,14 +147,14 @@
     }
 
     // New function to find best spawn location
-    function findBestSpawnLocation() {
-        const MAX_LOCAL_DENSITY = 8; // Maximum cubes allowed in a local area
+    function findBestSpawnLocation(isLargeCube = false) {
+        const MAX_LOCAL_DENSITY = isLargeCube ? 4 : 8; // Lower density for large cubes
         
         // Keep evenly spaced timing but use random horizontal position
         const x = Math.random() * canvas.width; // Random position across entire width
         
         // Spawn from above the visible area
-        const y = -CUBE_SETTINGS.size * 2;
+        const y = -CUBE_SETTINGS.size * (isLargeCube ? 6 : 2); // Higher spawn for large cubes
         const z = (Math.random() - 0.5) * 150;
         
         // Check if this location has acceptable density
@@ -169,29 +169,33 @@
     }
 
     class FillingCube {
-        constructor(x, y, z) {
+        constructor(x, y, z, isLargeCube = false) {
             this.x = x;
             this.y = y;
             this.z = z;
+            this.isLargeCube = isLargeCube;
             this.rotationX = Math.random() * Math.PI * 2;
             this.rotationY = Math.random() * Math.PI * 2;
             this.rotationZ = Math.random() * Math.PI * 2;
             
             // Initial velocity - only downward with minimal horizontal movement
             this.velocityX = (Math.random() - 0.5) * 0.2; // Minimal horizontal movement
-            this.velocityY = CUBE_SETTINGS.initialVelocityY * 0.8; // Consistent downward velocity
+            this.velocityY = CUBE_SETTINGS.initialVelocityY * (isLargeCube ? 1.2 : 0.8); // Faster for large cubes
             this.velocityZ = (Math.random() - 0.5) * 0.2; // Minimal z-axis drift
             
-            this.rotVelocityX = (Math.random() - 0.5) * CUBE_SETTINGS.rotationSpeed;
-            this.rotVelocityY = (Math.random() - 0.5) * CUBE_SETTINGS.rotationSpeed;
-            this.rotVelocityZ = (Math.random() - 0.5) * CUBE_SETTINGS.rotationSpeed;
+            this.rotVelocityX = (Math.random() - 0.5) * CUBE_SETTINGS.rotationSpeed * (isLargeCube ? 0.5 : 1);
+            this.rotVelocityY = (Math.random() - 0.5) * CUBE_SETTINGS.rotationSpeed * (isLargeCube ? 0.5 : 1);
+            this.rotVelocityZ = (Math.random() - 0.5) * CUBE_SETTINGS.rotationSpeed * (isLargeCube ? 0.5 : 1);
             
             this.colorIndex = Math.floor(Math.random() * CUBE_COLORS.length);
-            this.size = CUBE_SETTINGS.size * (0.9 + Math.random() * 0.2);
+            this.size = CUBE_SETTINGS.size * (isLargeCube ? 2 : (0.9 + Math.random() * 0.2));
             this.opacity = 0.8 + Math.random() * 0.2;
             this.settled = false;
             this.settling = false;
             this.settleCountdown = 30;
+            
+            // Large cubes have more mass
+            this.mass = isLargeCube ? 4 : 1;
         }
 
         update() {
@@ -510,12 +514,21 @@
     }
 
     function spawnCube() {
-        const location = findBestSpawnLocation();
+        // Determine if this should be a large cube (5% chance)
+        const isLargeCube = Math.random() < 0.05;
         
-        // Always spawn a cube (no null check) with evenly spaced positions
-        const cube = new FillingCube(location.x, location.y, location.z);
+        // Use different spawn logic for large cubes
+        const location = findBestSpawnLocation(isLargeCube);
+        
+        // Create the cube with the isLargeCube parameter
+        const cube = new FillingCube(location.x, location.y, location.z, isLargeCube);
         cubes.push(cube);
         addToGrid(cube);
+        
+        // Log when spawning a large cube
+        if (isLargeCube) {
+            console.log('Spawned a large cube!');
+        }
     }
 
     function calculateFillLevel() {

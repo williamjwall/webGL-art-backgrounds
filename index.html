@@ -41,25 +41,29 @@
         .controls {
             position: fixed;
             bottom: 20px;
-            left: 0;
-            width: 100%;
+            right: 20px;
             display: flex;
-            justify-content: center;
+            justify-content: flex-end;
             z-index: 100;
         }
         .btn {
             background-color: rgba(0, 0, 0, 0.6);
             color: white;
-            border: 2px solid #0088ff;
+            border: 2px solid white;
             padding: 10px 20px;
             margin: 0 10px;
             cursor: pointer;
             font-size: 16px;
             border-radius: 5px;
             transition: all 0.3s ease;
+            outline: none;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 300;
         }
         .btn:hover {
-            background-color: rgba(0, 136, 255, 0.3);
+            background-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
         }
         #content {
             position: relative;
@@ -77,12 +81,13 @@
         <canvas id="triangles-canvas"></canvas>
         <canvas id="plankton-canvas"></canvas>
         <canvas id="graph-canvas"></canvas>
-        <canvas id="rotating-cubes-canvas"></canvas>
+        <canvas id="rotating-cubes-canvas" class="active"></canvas>
         <canvas id="phylogenetic-canvas"></canvas>
         <canvas id="decision-trees-canvas"></canvas>
         <canvas id="binary-trees-canvas"></canvas>
-        <canvas id="climber-canvas" class="active"></canvas>
+        <canvas id="climber-canvas"></canvas>
         <canvas id="water-canvas"></canvas>
+        <canvas id="lifesarrival-canvas"></canvas>
         
         <div class="controls">
             <button class="btn" id="prev-btn">Previous</button>
@@ -236,6 +241,10 @@
             // Show new canvas
             newCanvas.classList.add('active');
             resources.activeCanvas = newCanvas;
+            
+            // Ensure the canvas is properly sized
+            newCanvas.width = window.innerWidth;
+            newCanvas.height = window.innerHeight;
 
             // Determine script name and visualization object name
             const visualizationInfo = getVisualizationInfo(newCanvasId);
@@ -257,7 +266,24 @@
                 
                 // Load script if needed
                 if (!resources.loadedScripts.has(visualizationInfo.scriptPath)) {
-                    await loadScript(visualizationInfo.scriptPath);
+                    console.log(`Script not loaded yet, loading: ${visualizationInfo.scriptPath}`);
+                    try {
+                        await loadScript(visualizationInfo.scriptPath);
+                    } catch (error) {
+                        console.error(`Failed to load script: ${visualizationInfo.scriptPath}`, error);
+                        // Show error message on canvas
+                        const ctx = newCanvas.getContext('2d');
+                        if (ctx) {
+                            ctx.fillStyle = '#000';
+                            ctx.fillRect(0, 0, newCanvas.width, newCanvas.height);
+                            ctx.font = '20px Arial';
+                            ctx.fillStyle = '#ff0000';
+                            ctx.textAlign = 'center';
+                            ctx.fillText(`Error: Failed to load ${visualizationInfo.scriptPath}`, newCanvas.width/2, newCanvas.height/2);
+                            ctx.fillText(`Check console for details`, newCanvas.width/2, newCanvas.height/2 + 30);
+                        }
+                        return;
+                    }
                 }
                 
                 // Check if visualization object exists
@@ -269,6 +295,17 @@
                     resources.activeVisualization = visualizationObj;
                 } else {
                     console.error(`Visualization object ${visualizationInfo.objectName} not found or init method missing`);
+                    // Show error message on canvas
+                    const ctx = newCanvas.getContext('2d');
+                    if (ctx) {
+                        ctx.fillStyle = '#000';
+                        ctx.fillRect(0, 0, newCanvas.width, newCanvas.height);
+                        ctx.font = '20px Arial';
+                        ctx.fillStyle = '#ff0000';
+                        ctx.textAlign = 'center';
+                        ctx.fillText(`Error: Visualization object ${visualizationInfo.objectName} not found`, newCanvas.width/2, newCanvas.height/2);
+                        ctx.fillText(`or init method missing`, newCanvas.width/2, newCanvas.height/2 + 30);
+                    }
                 }
             } catch (error) {
                 console.error('Error initializing visualization:', error);
@@ -303,6 +340,9 @@
             } else if (baseName === 'climber') {
                 scriptName = 'climber';
                 objectName = 'Climber';
+            } else if (baseName === 'lifesarrival') {
+                scriptName = 'lifesarrival';
+                objectName = 'LifesArrival';
             } else {
                 // For other cases, use simple conversion rules
                 scriptName = baseName.replace(/-/g, '_');
@@ -372,6 +412,19 @@
                 // Load initial visualization - starting with climber
                 console.log('Loading climber visualization...');
                 await loadScript('js/climber.js');
+                
+                // Preload all other visualization scripts
+                console.log('Preloading other visualizations...');
+                await loadScript('js/water.js');
+                await loadScript('js/plankton.js');
+                await loadScript('js/triangles.js');
+                await loadScript('js/rotating_cubes.js');
+                await loadScript('js/phylogenetic_trees.js');
+                await loadScript('js/binary_trees.js');
+                await loadScript('js/graph.js');
+                await loadScript('js/roots.js');  // decision trees
+                await loadScript('js/lifesarrival.js');
+                
                 console.log('Switching to climber canvas...');
                 await switchVisualization('climber-canvas');
 
@@ -385,7 +438,8 @@
                     'phylogenetic-canvas',      // PhylogeneticTrees
                     'binary-trees-canvas',      // BinaryTrees
                     'graph-canvas',             // Graph
-                    'decision-trees-canvas'     // DecisionTrees
+                    'decision-trees-canvas',    // DecisionTrees
+                    'lifesarrival-canvas'       // LifesArrival
                 ];
                 
                 // Initialize currentIndex for climber-canvas

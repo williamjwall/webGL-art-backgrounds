@@ -31,12 +31,12 @@
     // Now these will be properly defined
     const nodes = Graph.nodes;
     const edges = Graph.edges;
-    const numNodes = 150; // More nodes for better coverage
-    const maxDistance = 150;
+    const numNodes = 200; // More nodes for better coverage
+    const maxDistance = 180; // Increased distance for more connections
     
     // Remove mouse tracking and click events
     let lastBurstTime = Date.now();
-    const burstInterval = 2000; // Burst every 2 seconds
+    const burstInterval = 1500; // Reduced interval for more frequent bursts
     
     // Only initialize if this is the active canvas
     if (canvas.classList.contains('active')) {
@@ -87,7 +87,7 @@
             lastBurstTime = currentTime;
             
             // Create a burst of nodes at random position
-            const burstSize = 8;
+            const burstSize = 12; // Increased burst size
             const burstX = Math.random() * canvas.width;
             const burstY = Math.random() * canvas.height;
             
@@ -173,9 +173,9 @@
         
         // Draw proximity edges with reduced opacity
         edges.forEach(edge => {
-            const opacity = 0.08 * (1 - edge.dist / maxDistance); // Reduced from 0.15 to 0.08
+            const opacity = 0.12 * (1 - edge.dist / maxDistance); // Increased opacity
             ctx.strokeStyle = `rgba(255, 255, 255, ${opacity})`;
-            ctx.lineWidth = 0.8; // Increased from 0.3 to 0.8
+            ctx.lineWidth = 1.0; // Increased line width
             ctx.beginPath();
             ctx.moveTo(edge.from.x, edge.from.y);
             ctx.lineTo(edge.to.x, edge.to.y);
