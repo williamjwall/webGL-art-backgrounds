@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
@@ -27,12 +27,20 @@
             position: fixed;
             width: 100%;
             height: 100%;
+            /* Ensure proper mobile scaling */
+            -webkit-text-size-adjust: 100%;
+            -ms-text-size-adjust: 100%;
+            text-size-adjust: 100%;
         }
         
         .container {
             position: relative;
             width: 100vw;
             height: 100vh;
+            /* Force proper mobile scaling */
+            max-width: 100%;
+            max-height: 100%;
+            overflow: hidden;
         }
         
         canvas {
@@ -43,6 +51,10 @@
             height: 100%;
             display: none;
             touch-action: none;
+            /* Ensure canvas scales properly on mobile */
+            max-width: 100vw;
+            max-height: 100vh;
+            object-fit: contain;
         }
         
         canvas.active {
@@ -148,27 +160,61 @@
             }
         }
         
-        /* Mobile-specific styles */
+        /* Enhanced Mobile-specific styles for proper scaling */
         @media (max-width: 768px) {
-            body {
-                overscroll-behavior: none;
-            }
-            
-            .container {
+            html, body {
                 width: 100%;
                 height: 100%;
                 overflow: hidden;
+                overscroll-behavior: none;
+                /* Prevent zoom on double tap */
+                touch-action: manipulation;
+                /* Ensure text doesn't resize */
+                -webkit-text-size-adjust: none;
+                -moz-text-size-adjust: none;
+                -ms-text-size-adjust: none;
+                text-size-adjust: none;
+            }
+            
+            .container {
+                width: 100vw;
+                height: 100vh;
+                overflow: hidden;
+                /* Force container to fit screen exactly */
+                min-width: 100vw;
+                min-height: 100vh;
+                max-width: 100vw;
+                max-height: 100vh;
+            }
+            
+            canvas {
+                /* Force canvas to fit mobile screen exactly */
+                width: 100vw !important;
+                height: 100vh !important;
+                max-width: 100vw !important;
+                max-height: 100vh !important;
+                min-width: 100vw !important;
+                min-height: 100vh !important;
+                object-fit: cover;
+                /* Prevent any scaling issues */
+                transform: none !important;
+                zoom: 1 !important;
             }
             
             .controls {
                 bottom: 15px;
                 gap: 15px;
+                /* Ensure controls stay within viewport */
+                max-width: calc(100vw - 20px);
+                padding: 0 10px;
             }
             
             .btn {
                 width: 45px;
                 height: 45px;
                 box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+                /* Prevent button scaling issues */
+                flex-shrink: 0;
             }
             
             .btn svg {
@@ -180,12 +226,12 @@
                 display: block;
                 position: fixed;
                 top: 10px;
-                left: 0;
-                right: 0;
+                left: 50%;
+                transform: translateX(-50%);
                 text-align: center;
                 color: rgba(255, 255, 255, 0.7);
                 font-size: 14px;
-                padding: 5px;
+                padding: 5px 10px;
                 z-index: 100;
                 pointer-events: none;
                 text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
@@ -193,16 +239,18 @@
                 backdrop-filter: blur(2px);
                 -webkit-backdrop-filter: blur(2px);
                 border-radius: 20px;
-                margin: 0 auto;
-                width: 200px;
+                width: auto;
+                max-width: calc(100vw - 40px);
+                white-space: nowrap;
             }
         }
         
-        /* For smaller mobile screens */
+        /* For smaller mobile screens - extra tight scaling */
         @media (max-width: 480px) {
             .controls {
                 bottom: 10px;
                 gap: 12px;
+                padding: 0 5px;
             }
             
             .btn {
@@ -217,7 +265,8 @@
             
             .swipe-indicator {
                 font-size: 12px;
-                width: 180px;
+                padding: 4px 8px;
+                top: 8px;
             }
         }
         
@@ -225,6 +274,7 @@
         @media (max-height: 480px) {
             .controls {
                 bottom: 5px;
+                gap: 10px;
             }
             
             .btn {
@@ -232,17 +282,64 @@
                 height: 35px;
             }
             
+            .btn svg {
+                width: 14px;
+                height: 14px;
+            }
+            
             .swipe-indicator {
                 top: 5px;
+                font-size: 11px;
+                padding: 3px 6px;
             }
         }
         
-        /* Prevent scrolling/bouncing on iOS Safari */
+        /* Specific fixes for iPhone and Android */
+        @media screen and (max-device-width: 480px) {
+            html, body {
+                /* Force exact mobile dimensions */
+                width: 100vw;
+                height: 100vh;
+                position: fixed;
+                overflow: hidden;
+            }
+            
+            .container {
+                /* Ensure container fills entire mobile screen */
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                width: 100vw;
+                height: 100vh;
+            }
+            
+            canvas {
+                /* Force canvas to exact mobile screen size */
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100vw !important;
+                height: 100vh !important;
+            }
+        }
+        
+        /* Prevent scrolling/bouncing on iOS Safari - enhanced */
         html.ios {
             position: fixed;
-            width: 100%;
-            height: 100%;
+            width: 100vw;
+            height: 100vh;
             overflow: hidden;
+        }
+        
+        html.ios body {
+            position: fixed;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            /* Prevent iOS Safari address bar issues */
+            -webkit-overflow-scrolling: touch;
         }
         
         /* Debug info overlay */
@@ -592,12 +689,33 @@
         async function initialize() {
             console.log('Starting initialization...');
             try {
-                // Ensure canvas is properly sized
-                const canvas = document.getElementById('climber-canvas');
-                if (canvas) {
-                    canvas.width = window.innerWidth;
-                    canvas.height = window.innerHeight;
+                // Enhanced mobile canvas sizing
+                function setCanvasDimensions() {
+                    const canvases = document.querySelectorAll('canvas');
+                    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                    
+                    canvases.forEach(canvas => {
+                        if (isMobile) {
+                            // For mobile: use exact viewport dimensions
+                            canvas.width = window.innerWidth;
+                            canvas.height = window.innerHeight;
+                            canvas.style.width = '100vw';
+                            canvas.style.height = '100vh';
+                            canvas.style.position = 'fixed';
+                            canvas.style.top = '0';
+                            canvas.style.left = '0';
+                            canvas.style.maxWidth = '100vw';
+                            canvas.style.maxHeight = '100vh';
+                        } else {
+                            // For desktop: standard sizing
+                            canvas.width = window.innerWidth;
+                            canvas.height = window.innerHeight;
+                        }
+                    });
                 }
+                
+                // Set initial canvas dimensions
+                setCanvasDimensions();
 
                 // Check version and clear cache if needed
                 const currentVersion = localStorage.getItem(CACHE_KEY);
@@ -716,15 +834,12 @@
                     }
                 });
                 
-                // Handle orientation changes for mobile
+                // Handle orientation changes for mobile - enhanced
                 window.addEventListener('orientationchange', () => {
                     // Wait for orientation change to complete
                     setTimeout(() => {
-                        // Resize all canvases
-                        document.querySelectorAll('canvas').forEach(canvas => {
-                            canvas.width = window.innerWidth;
-                            canvas.height = window.innerHeight;
-                        });
+                        console.log('Orientation changed, resizing canvases');
+                        setCanvasDimensions();
                         
                         // Reinitialize current visualization
                         if (resources.activeVisualization && typeof resources.activeVisualization.init === 'function') {
@@ -733,7 +848,7 @@
                     }, 300);
                 });
                 
-                // Handle resize events
+                // Handle resize events - enhanced for mobile
                 window.addEventListener('resize', () => {
                     // Debounce resize events
                     if (resources.resizeTimeout) {
@@ -741,15 +856,12 @@
                     }
                     
                     resources.resizeTimeout = setTimeout(() => {
-                        // Resize active canvas
-                        if (resources.activeCanvas) {
-                            resources.activeCanvas.width = window.innerWidth;
-                            resources.activeCanvas.height = window.innerHeight;
-                            
-                            // Reinitialize current visualization
-                            if (resources.activeVisualization && typeof resources.activeVisualization.init === 'function') {
-                                resources.activeVisualization.init();
-                            }
+                        console.log('Window resized, updating canvas dimensions');
+                        setCanvasDimensions();
+                        
+                        // Reinitialize current visualization
+                        if (resources.activeVisualization && typeof resources.activeVisualization.init === 'function') {
+                            resources.activeVisualization.init();
                         }
                     }, 250);
                 });
