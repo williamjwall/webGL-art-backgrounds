@@ -347,10 +347,88 @@
         .debug-info {
             display: none;
         }
+        
+        /* Mobile warning styles */
+        .mobile-warning {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        
+        .mobile-warning-content {
+            text-align: center;
+            padding: 40px 20px;
+            max-width: 400px;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        
+        .mobile-warning-content h1 {
+            font-size: 28px;
+            margin-bottom: 20px;
+            color: #fff;
+        }
+        
+        .mobile-warning-content p {
+            font-size: 16px;
+            line-height: 1.5;
+            margin-bottom: 15px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .mobile-warning-icon {
+            font-size: 48px;
+            margin-top: 20px;
+            opacity: 0.8;
+        }
+        
+        /* Hide mobile warning on desktop */
+        @media (min-width: 769px) {
+            .mobile-warning {
+                display: none !important;
+            }
+        }
+        
+        /* Show mobile warning and hide main content on mobile */
+        @media (max-width: 768px) {
+            .mobile-warning {
+                display: flex !important;
+            }
+            
+            .container {
+                display: none !important;
+            }
+            
+            .controls {
+                display: none !important;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="container">
+    <!-- Mobile warning message -->
+    <div id="mobile-warning" class="mobile-warning" style="display: none;">
+        <div class="mobile-warning-content">
+            <h1>🖥️ Desktop Only</h1>
+            <p>This visualization experience is designed for desktop computers only.</p>
+            <p>Please visit this site on a desktop or laptop computer to view the content.</p>
+            <div class="mobile-warning-icon">💻</div>
+        </div>
+    </div>
+
+    <div class="container" id="main-container">
         <canvas id="triangles-canvas"></canvas>
         <canvas id="plankton-canvas"></canvas>
         <canvas id="graph-canvas"></canvas>
