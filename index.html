@@ -185,9 +185,6 @@
                 min-height: 100vh;
                 max-width: 100vw;
                 max-height: 100vh;
-                /* ZOOM OUT EFFECT FOR MOBILE - Scale down to fit everything */
-                transform: scale(0.7);
-                transform-origin: center center;
                 position: relative;
             }
             
@@ -199,13 +196,10 @@
                 max-height: 100vh !important;
                 min-width: 100vw !important;
                 min-height: 100vh !important;
-                object-fit: cover;
-                /* Prevent any scaling issues */
-                transform: none !important;
-                zoom: 1 !important;
-                /* Scale up canvas to compensate for container scale */
-                transform: scale(1.43) !important; /* 1/0.7 = 1.43 */
-                transform-origin: center center !important;
+                object-fit: contain;
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
             }
             
             .controls {
@@ -214,9 +208,6 @@
                 /* Ensure controls stay within viewport */
                 max-width: calc(100vw - 20px);
                 padding: 0 10px;
-                /* Scale controls back up to normal size */
-                transform: scale(1.43); /* 1/0.7 = 1.43 */
-                transform-origin: center bottom;
             }
             
             .btn {
@@ -237,7 +228,7 @@
                 position: fixed;
                 top: 10px;
                 left: 50%;
-                transform: translateX(-50%) scale(1.43); /* Scale back up and center */
+                transform: translateX(-50%);
                 text-align: center;
                 color: rgba(255, 255, 255, 0.7);
                 font-size: 14px;
@@ -252,28 +243,15 @@
                 width: auto;
                 max-width: calc(100vw - 40px);
                 white-space: nowrap;
-                transform-origin: center top;
             }
         }
         
-        /* For smaller mobile screens - extra tight scaling with more zoom out */
+        /* For smaller mobile screens - extra tight scaling */
         @media (max-width: 480px) {
-            .container {
-                /* Even more zoom out for smaller screens */
-                transform: scale(0.6);
-            }
-            
-            canvas {
-                /* Compensate for smaller scale */
-                transform: scale(1.67) !important; /* 1/0.6 = 1.67 */
-            }
-            
             .controls {
                 bottom: 10px;
                 gap: 12px;
                 padding: 0 5px;
-                /* Scale controls back up */
-                transform: scale(1.67); /* 1/0.6 = 1.67 */
             }
             
             .btn {
@@ -290,27 +268,14 @@
                 font-size: 12px;
                 padding: 4px 8px;
                 top: 8px;
-                transform: translateX(-50%) scale(1.67); /* Scale back up */
             }
         }
         
-        /* For very small screens or landscape orientation on mobile - maximum zoom out */
+        /* For very small screens or landscape orientation on mobile */
         @media (max-height: 480px) {
-            .container {
-                /* Maximum zoom out for landscape or very small screens */
-                transform: scale(0.5);
-            }
-            
-            canvas {
-                /* Compensate for maximum scale */
-                transform: scale(2.0) !important; /* 1/0.5 = 2.0 */
-            }
-            
             .controls {
                 bottom: 5px;
                 gap: 10px;
-                /* Scale controls back up */
-                transform: scale(2.0); /* 1/0.5 = 2.0 */
             }
             
             .btn {
@@ -327,11 +292,10 @@
                 top: 5px;
                 font-size: 11px;
                 padding: 3px 6px;
-                transform: translateX(-50%) scale(2.0); /* Scale back up */
             }
         }
         
-        /* Specific fixes for iPhone and Android with zoom out */
+        /* Specific fixes for iPhone and Android */
         @media screen and (max-device-width: 480px) {
             html, body {
                 /* Force exact mobile dimensions */
@@ -342,7 +306,7 @@
             }
             
             .container {
-                /* Ensure container fills entire mobile screen with zoom out */
+                /* Ensure container fills entire mobile screen */
                 position: fixed;
                 top: 0;
                 left: 0;
@@ -350,20 +314,15 @@
                 bottom: 0;
                 width: 100vw;
                 height: 100vh;
-                /* Apply zoom out for device-specific scaling */
-                transform: scale(0.65);
-                transform-origin: center center;
             }
             
             canvas {
-                /* Force canvas to exact mobile screen size with compensation */
+                /* Force canvas to exact mobile screen size */
                 position: fixed !important;
                 top: 0 !important;
                 left: 0 !important;
                 width: 100vw !important;
                 height: 100vh !important;
-                transform: scale(1.54) !important; /* 1/0.65 = 1.54 */
-                transform-origin: center center !important;
             }
         }
         
@@ -737,29 +696,12 @@
                     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
                     
                     canvases.forEach(canvas => {
+                        // Always use actual screen dimensions
+                        canvas.width = window.innerWidth;
+                        canvas.height = window.innerHeight;
+                        
                         if (isMobile) {
-                            // For mobile: use exact viewport dimensions with scaling compensation
-                            const screenWidth = window.innerWidth;
-                            const screenHeight = window.innerHeight;
-                            
-                            // Determine scale factor based on screen size
-                            let scaleFactor = 0.7; // Default mobile scale
-                            if (screenWidth <= 480) {
-                                scaleFactor = 0.6; // Smaller screens
-                            }
-                            if (screenHeight <= 480) {
-                                scaleFactor = 0.5; // Landscape or very small screens
-                            }
-                            if (screenWidth <= 480 && screenHeight <= 480) {
-                                scaleFactor = 0.65; // Device-specific scaling
-                            }
-                            
-                            // Set canvas dimensions to compensate for CSS scaling
-                            const compensationFactor = 1 / scaleFactor;
-                            canvas.width = Math.floor(screenWidth * compensationFactor);
-                            canvas.height = Math.floor(screenHeight * compensationFactor);
-                            
-                            // Apply CSS styles for mobile
+                            // For mobile: ensure canvas fills screen exactly
                             canvas.style.width = '100vw';
                             canvas.style.height = '100vh';
                             canvas.style.position = 'fixed';
@@ -767,21 +709,12 @@
                             canvas.style.left = '0';
                             canvas.style.maxWidth = '100vw';
                             canvas.style.maxHeight = '100vh';
-                            canvas.style.transform = `scale(${compensationFactor})`;
-                            canvas.style.transformOrigin = 'center center';
                             
-                            // Store scale info for visualizations to use
-                            canvas.dataset.mobileScale = scaleFactor;
-                            canvas.dataset.compensationFactor = compensationFactor;
-                            
-                            console.log(`Mobile canvas scaling: screen=${screenWidth}x${screenHeight}, scale=${scaleFactor}, canvas=${canvas.width}x${canvas.height}`);
+                            console.log(`Mobile canvas: ${canvas.width}x${canvas.height}`);
                         } else {
                             // For desktop: standard sizing
-                            canvas.width = window.innerWidth;
-                            canvas.height = window.innerHeight;
+                            canvas.style.position = 'absolute';
                             canvas.style.transform = 'none';
-                            delete canvas.dataset.mobileScale;
-                            delete canvas.dataset.compensationFactor;
                         }
                     });
                 }
