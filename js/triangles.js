@@ -75,6 +75,46 @@
     let then = 0;
     let startTime = 0;
     
+    // Initialize a shader program
+    function initShaderProgram(gl, vsSource, fsSource) {
+        const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+        const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+        
+        // Create the shader program
+        const shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+        
+        // If creating the shader program failed, alert
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
+            return null;
+        }
+        
+        return shaderProgram;
+    }
+    
+    // Creates a shader of the given type, uploads the source and compiles it
+    function loadShader(gl, type, source) {
+        const shader = gl.createShader(type);
+        
+        // Send the source to the shader object
+        gl.shaderSource(shader, source);
+        
+        // Compile the shader program
+        gl.compileShader(shader);
+        
+        // See if it compiled successfully
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+            gl.deleteShader(shader);
+            return null;
+        }
+        
+        return shader;
+    }
+    
     function init() {
         console.log('Initializing Triangles visualization...');
         
@@ -661,9 +701,9 @@
         const baseSize = Math.min(xSpacing, ySpacing) * 0.3; // Increased from 0.2 to 0.3 (50% larger)
         
         // Place triangles in a grid with slight variation
-        let count = 0;
-        for (let row = 1; row <= rowsCount && count < count; row++) {
-            for (let col = 1; col <= columnsCount && count < count; col++) {
+        let numCreated = 0;
+        for (let row = 1; row <= rowsCount && numCreated < count; row++) {
+            for (let col = 1; col <= columnsCount && numCreated < count; col++) {
                 // Calculate base position in grid
                 const x = bounds.left + xSpacing * col;
                 const y = bounds.bottom + ySpacing * row;
@@ -718,7 +758,7 @@
                     col: col
                 });
                 
-                count++;
+                numCreated++;
             }
         }
         

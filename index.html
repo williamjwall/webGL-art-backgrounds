@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
@@ -17,18 +17,24 @@
             box-sizing: border-box;
             -webkit-tap-highlight-color: transparent;
         }
+        
         body {
             font-family: Arial, sans-serif;
             background-color: #111;
             color: #fff;
             overflow: hidden;
             touch-action: manipulation;
+            position: fixed;
+            width: 100%;
+            height: 100%;
         }
+        
         .container {
             position: relative;
             width: 100vw;
             height: 100vh;
         }
+        
         canvas {
             position: absolute;
             top: 0;
@@ -38,9 +44,12 @@
             display: none;
             touch-action: none;
         }
+        
         canvas.active {
             display: block;
         }
+        
+        /* Base controls for desktop */
         .controls {
             position: fixed;
             bottom: 20px;
@@ -52,6 +61,7 @@
             padding: 0 10px;
             gap: 20px;
         }
+        
         .btn {
             background-color: rgba(0, 0, 0, 0.5);
             color: white;
@@ -70,6 +80,7 @@
             position: relative;
             overflow: hidden;
         }
+        
         .btn:before {
             content: '';
             position: absolute;
@@ -81,42 +92,109 @@
             opacity: 0;
             transition: opacity 0.3s ease;
         }
+        
         .btn:hover:before, .btn:active:before {
             opacity: 1;
         }
+        
         .btn:active {
             transform: scale(0.95);
             box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
         }
+        
         .btn svg {
             width: 20px;
             height: 20px;
             fill: white;
             filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
         }
+        
         #content {
             position: relative;
             z-index: 2;
             color: white;
             padding: 20px;
         }
+        
         .hidden {
             display: none !important;
         }
         
+        /* Desktop-specific styles */
+        @media (min-width: 769px) {
+            .controls {
+                bottom: 20px;
+                gap: 20px;
+            }
+            
+            .btn {
+                width: 50px;
+                height: 50px;
+                opacity: 0.7;
+                transition: opacity 0.3s ease, transform 0.2s ease, box-shadow 0.2s ease;
+            }
+            
+            .btn:hover {
+                opacity: 1;
+            }
+            
+            .btn svg {
+                width: 20px;
+                height: 20px;
+            }
+            
+            .swipe-indicator {
+                display: none;
+            }
+        }
+        
         /* Mobile-specific styles */
         @media (max-width: 768px) {
+            body {
+                overscroll-behavior: none;
+            }
+            
+            .container {
+                width: 100%;
+                height: 100%;
+                overflow: hidden;
+            }
+            
             .controls {
                 bottom: 15px;
                 gap: 15px;
             }
+            
             .btn {
                 width: 45px;
                 height: 45px;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
             }
+            
             .btn svg {
                 width: 18px;
                 height: 18px;
+            }
+            
+            .swipe-indicator {
+                display: block;
+                position: fixed;
+                top: 10px;
+                left: 0;
+                right: 0;
+                text-align: center;
+                color: rgba(255, 255, 255, 0.7);
+                font-size: 14px;
+                padding: 5px;
+                z-index: 100;
+                pointer-events: none;
+                text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
+                background-color: rgba(0, 0, 0, 0.2);
+                backdrop-filter: blur(2px);
+                -webkit-backdrop-filter: blur(2px);
+                border-radius: 20px;
+                margin: 0 auto;
+                width: 200px;
             }
         }
         
@@ -126,35 +204,50 @@
                 bottom: 10px;
                 gap: 12px;
             }
+            
             .btn {
                 width: 40px;
                 height: 40px;
             }
+            
             .btn svg {
                 width: 16px;
                 height: 16px;
             }
-        }
-        
-        /* Add swipe indicator for mobile */
-        .swipe-indicator {
-            position: fixed;
-            top: 10px;
-            left: 0;
-            right: 0;
-            text-align: center;
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 14px;
-            padding: 5px;
-            z-index: 100;
-            pointer-events: none;
-            text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
-        }
-        
-        @media (min-width: 769px) {
+            
             .swipe-indicator {
-                display: none;
+                font-size: 12px;
+                width: 180px;
             }
+        }
+        
+        /* For very small screens or landscape orientation on mobile */
+        @media (max-height: 480px) {
+            .controls {
+                bottom: 5px;
+            }
+            
+            .btn {
+                width: 35px;
+                height: 35px;
+            }
+            
+            .swipe-indicator {
+                top: 5px;
+            }
+        }
+        
+        /* Prevent scrolling/bouncing on iOS Safari */
+        html.ios {
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        
+        /* Debug info overlay */
+        .debug-info {
+            display: none;
         }
     </style>
 </head>
@@ -194,8 +287,13 @@
     <!-- Script loader and controller -->
     <script>
         // Version control for cache busting
-        const VERSION = '1.0.1';
+        const VERSION = '1.0.2';
         const CACHE_KEY = 'webql_random_version';
+
+        // Detect iOS for specific iOS fixes
+        if (/iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream) {
+            document.documentElement.classList.add('ios');
+        }
 
         // Memory management and performance monitoring
         const performanceMonitor = {

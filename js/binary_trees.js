@@ -21,14 +21,35 @@
     let backgroundGradient = null;
     
     function resizeCanvas() {
+        // Use the full viewport dimensions for mobile compatibility
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
+        
+        // Force canvas to cover the full viewport
+        canvas.style.width = '100vw';
+        canvas.style.height = '100vh';
+        canvas.style.position = 'fixed';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.zIndex = '-1';
         
         // Also update background gradient when resizing
         backgroundGradient = null;
     }
-    
-    window.addEventListener('resize', resizeCanvas);
+
+    // Add a resize event listener with debounce for better performance
+    let resizeTimeout;
+    window.addEventListener('resize', function() {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(resizeCanvas, 100);
+    });
+
+    // Also handle orientation changes on mobile
+    window.addEventListener('orientationchange', function() {
+        setTimeout(resizeCanvas, 200);
+    });
+
+    // Initialize canvas size
     resizeCanvas();
 
     // Brown and yellow color palette
@@ -36,11 +57,11 @@
         background: '#0a0e05', // Deep green-black background
         backgroundGradientTop: '#080a03', // Darker top gradient
         backgroundGradientBottom: '#101505', // Slightly lighter bottom gradient
-        branchColor: '#5E4125', // Brown for main branches
-        tipColor: '#D9A566', // Light brown for branch tips
-        highlightColor: '#F7CA45', // Yellow highlight
-        accentColor: '#8C6D3F', // Medium brown accent
-        newGrowthColor: '#FFD700' // Gold for new growth
+        branchColor: '#7E6145', // Brighter brown for main branches (was #5E4125)
+        tipColor: '#F8C586', // Brighter light brown for branch tips (was #D9A566)
+        highlightColor: '#FFE265', // Brighter yellow highlight (was #F7CA45)
+        accentColor: '#AC8D5F', // Brighter medium brown accent (was #8C6D3F)
+        newGrowthColor: '#FFDF20' // Brighter gold for new growth (was #FFD700)
     };
 
     // Pre-compute RGB values to avoid parsing hex during animation
@@ -68,9 +89,9 @@
         b: parseInt(COLORS.newGrowthColor.slice(5, 7), 16)
     };
 
-    // Binary tree settings
-    const MAX_TREES = 6;
-    const MIN_VERTICAL_SPACING = 150;
+    // Binary tree settings - INCREASED TREE COUNT FOR DENSITY
+    const MAX_TREES = 12; // Increased from 10 to 12 for more coverage
+    const MIN_VERTICAL_SPACING = 110; // Further decreased spacing for more density
     
     // Calculate optimal spacing based on canvas height
     function calculateSpacing() {
@@ -106,8 +127,8 @@
             const spacing = calculateSpacing();
             const verticalPos = spacing * (this.index + 1);
             
-            // Start at left edge of screen
-            this.x = -50;
+            // Start further left for longer growth potential
+            this.x = -100; // Increased leftward start position
             this.y = verticalPos;
             
             this.segments = [];
@@ -115,11 +136,11 @@
             this.terminalNodes = new Set();
             this.pendingSegments = [];
             
-            // Growth parameters
-            this.growthSpeed = 2.0 + Math.random() * 5;
-            this.branchingChance = 0.1 + Math.random() * 0.25;
-            this.rightwardBias = 0.4 + Math.random() * 0.4;
-            this.thickness = 2.5 + Math.random() * 2.5;
+            // Growth parameters - FURTHER INCREASED FOR MORE EXTENT
+            this.growthSpeed = 3.0 + Math.random() * 6; // Even faster growth
+            this.branchingChance = 0.2 + Math.random() * 0.3; // Higher branching probability
+            this.rightwardBias = 0.5 + Math.random() * 0.3; // Stronger rightward bias to extend further
+            this.thickness = 2.0 + Math.random() * 2.0; // Maintain thin branches
             
             // Growth bursts
             this.burstMode = false;
@@ -133,8 +154,8 @@
         }
         
         addInitialSegment() {
-            // More variable initial length
-            const length = 70 + Math.random() * 60;
+            // Longer initial length for faster expansion
+            const length = 90 + Math.random() * 80; // Increased from 70+60
             
             this.segments.push({
                 startX: this.x,
@@ -165,10 +186,10 @@
                 !(dir.dx === invalidDirection.dx && dir.dy === invalidDirection.dy)
             );
             
-            // More chaotic direction selection
+            // Enhanced rightward bias for further extension
             if (Math.random() < this.rightwardBias) {
-                // Sometimes continue in same direction regardless of rightward bias
-                if (Math.random() < 0.3) {
+                // Continue in same direction more often for longer branches
+                if (Math.random() < 0.4) { // Increased from 0.3
                     return parentDirection;
                 }
                 return { dx: 1, dy: 0 };
@@ -189,10 +210,17 @@
             // Get next direction
             const nextDirection = this.getNextDirection(parent.direction);
             
-            // More variable segment lengths
-            const baseLength = 35 + Math.random() * 45;
-            const depthReduction = Math.min(20, depth * Math.random() * 2);
-            const length = Math.max(12, baseLength - depthReduction);
+            // Longer segments for further extension, especially in horizontal direction
+            let baseLength = 30 + Math.random() * 40; // Slightly longer segments
+            
+            // Make rightward segments even longer
+            if (nextDirection.dx === 1) {
+                baseLength += 15 + Math.random() * 20; // Extra length for rightward segments
+            }
+            
+            // Less depth reduction for longer branches
+            const depthReduction = Math.min(15, depth * Math.random() * 1.5); // Reduced from 20 and 2
+            const length = Math.max(10, baseLength - depthReduction);
             
             // Calculate endpoints
             const endX = lastX + (nextDirection.dx * length);
@@ -250,8 +278,8 @@
                 }
             }
             
-            // More frequent but shorter bursts
-            if (!this.burstMode && Math.random() < 0.015) {
+            // More frequent bursts for faster expansion
+            if (!this.burstMode && Math.random() < 0.035) { // Increased from 0.025
                 this.triggerGrowthBurst();
             }
             
@@ -259,7 +287,7 @@
             let completedSegmentsThisFrame = new Set();
             
             const activeSegmentsArray = Array.from(this.activeSegments);
-            const maxSegmentsPerFrame = 60;
+            const maxSegmentsPerFrame = 100; // Increased from 80 for faster growth
             const segmentsToProcess = activeSegmentsArray.length <= maxSegmentsPerFrame ? 
                 activeSegmentsArray : 
                 activeSegmentsArray.slice(0, maxSegmentsPerFrame);
@@ -285,7 +313,7 @@
             }
             
             let branchingAttempts = 0;
-            const maxBranchingAttempts = 18;
+            const maxBranchingAttempts = 24; // Increased from 18 for more density
             
             // Process newly completed segments
             for (const segmentIndex of completedSegmentsThisFrame) {
@@ -301,14 +329,14 @@
                         newSegmentsThisFrame++;
                         branchingAttempts++;
                         
-                        // Random chance for multiple branches
-                        if (branchRoll < this.branchingChance * 0.3) {
+                        // Random chance for multiple branches - INCREASED CHANCE
+                        if (branchRoll < this.branchingChance * 0.4) { // Increased from 0.3
                             this.queueSegment(segmentIndex);
                             newSegmentsThisFrame++;
                             branchingAttempts++;
                             
-                            // Rare chance for triple branching
-                            if (branchRoll < this.branchingChance * 0.1) {
+                            // Chance for triple branching - INCREASED CHANCE
+                            if (branchRoll < this.branchingChance * 0.15) { // Increased from 0.1
                                 this.queueSegment(segmentIndex);
                                 newSegmentsThisFrame++;
                                 branchingAttempts++;
@@ -322,7 +350,7 @@
                 this.activeSegments.delete(segmentIndex);
             }
             
-            // Additional random branching
+            // Additional random branching - IMPROVED FOR DENSITY
             if (branchingAttempts < maxBranchingAttempts) {
                 const terminalNodesArray = Array.from(this.terminalNodes);
                 const shuffledNodes = terminalNodesArray.sort(() => Math.random() - 0.5);
@@ -333,16 +361,19 @@
                     
                     const segment = this.segments[nodeIndex];
                     
-                    if (!segment || segment.depth > 25 || segment.branchCount >= 2) continue;
+                    // Allow even deeper branches for more growth
+                    if (!segment || segment.depth > 40 || segment.branchCount >= 3) continue; // Increased depth limit from 30 to 40
                     
-                    // More variable branching chance
-                    let branchChance = this.branchingChance * (0.3 + Math.random() * 0.4);
+                    // Prioritize rightward growth for extending further
+                    let branchChance = this.branchingChance * (0.4 + Math.random() * 0.4);
                     
                     if (segment.direction.dx === 1) {
-                        branchChance *= (0.8 + Math.random() * 0.4);
+                        // Increase branching for rightward segments
+                        branchChance *= (1.0 + Math.random() * 0.5); // Increased from 0.8+0.4
                     }
                     
-                    branchChance *= Math.max(0.15, 1 - (segment.depth * 0.03));
+                    // Less reduction by depth for more distant growth
+                    branchChance *= Math.max(0.25, 1 - (segment.depth * 0.02)); // Reduced depth penalty
                     
                     if (Math.random() < branchChance) {
                         this.queueSegment(nodeIndex);
@@ -352,12 +383,41 @@
                 }
             }
             
-            // Force growth if stalled
+            // More aggressive forced growth when stalled
             if (this.activeSegments.size === 0 && this.pendingSegments.length === 0) {
                 const terminalNodesArray = Array.from(this.terminalNodes);
                 if (terminalNodesArray.length > 0) {
-                    const randomNode = terminalNodesArray[Math.floor(Math.random() * terminalNodesArray.length)];
-                    this.queueSegment(randomNode);
+                    // Identify rightmost nodes for forced extension
+                    let rightmostX = -Infinity;
+                    let rightmostNodes = [];
+                    
+                    // Find the rightmost nodes (furthest extensions)
+                    terminalNodesArray.forEach(nodeIndex => {
+                        const segment = this.segments[nodeIndex];
+                        if (segment.endX > rightmostX) {
+                            rightmostX = segment.endX;
+                            rightmostNodes = [nodeIndex];
+                        } else if (segment.endX === rightmostX) {
+                            rightmostNodes.push(nodeIndex);
+                        }
+                    });
+                    
+                    // Always grow from rightmost nodes to extend further
+                    if (rightmostNodes.length > 0) {
+                        // Add at least one rightmost node for continued expansion
+                        const randomRightmostNode = rightmostNodes[Math.floor(Math.random() * rightmostNodes.length)];
+                        this.queueSegment(randomRightmostNode);
+                    }
+                    
+                    // Also add some random nodes for general density
+                    const numRandomNodes = Math.min(3, terminalNodesArray.length);
+                    for (let i = 0; i < numRandomNodes; i++) {
+                        const randomIndex = Math.floor(Math.random() * terminalNodesArray.length);
+                        const randomNode = terminalNodesArray[randomIndex];
+                        this.queueSegment(randomNode);
+                        terminalNodesArray.splice(randomIndex, 1);
+                        if (terminalNodesArray.length === 0) break;
+                    }
                 }
             }
             
@@ -433,9 +493,9 @@
                     g = TIP_RGB.g;
                     b = TIP_RGB.b;
                     
-                    // Highlight tips that can grow
+                    // Highlight tips that can grow - enhanced glow
                     if (this.terminalNodes.has(i)) {
-                        const highlightFactor = 0.2 + Math.sin(segment.age * 0.05) * 0.1;
+                        const highlightFactor = 0.3 + Math.sin(segment.age * 0.08) * 0.15; // Increased from 0.2+0.1
                         r = r * (1 - highlightFactor) + HIGHLIGHT_RGB.r * highlightFactor;
                         g = g * (1 - highlightFactor) + HIGHLIGHT_RGB.g * highlightFactor;
                         b = b * (1 - highlightFactor) + HIGHLIGHT_RGB.b * highlightFactor;
@@ -446,17 +506,17 @@
                     g = BRANCH_RGB.g;
                     b = BRANCH_RGB.b;
                     
-                    // Add occasional highlights for visual interest (yellow glow)
-                    if (Math.random() < 0.02) {
-                        const highlightFactor = 0.15 + Math.random() * 0.15;
+                    // Add occasional highlights for visual interest (yellow glow) - enhanced
+                    if (Math.random() < 0.03) { // Increased from 0.02
+                        const highlightFactor = 0.25 + Math.random() * 0.2; // Increased from 0.15+0.15
                         r = r * (1 - highlightFactor) + HIGHLIGHT_RGB.r * highlightFactor;
                         g = g * (1 - highlightFactor) + HIGHLIGHT_RGB.g * highlightFactor;
                         b = b * (1 - highlightFactor) + HIGHLIGHT_RGB.b * highlightFactor;
                     }
                     
-                    // Burst mode coloring
+                    // Burst mode coloring - enhanced
                     if (this.burstMode) {
-                        const burstFactor = 0.1 + Math.random() * 0.1;
+                        const burstFactor = 0.15 + Math.random() * 0.15; // Increased from 0.1+0.1
                         r = r * (1 - burstFactor) + HIGHLIGHT_RGB.r * burstFactor;
                         g = g * (1 - burstFactor) + HIGHLIGHT_RGB.g * burstFactor;
                         b = b * (1 - burstFactor) + HIGHLIGHT_RGB.b * burstFactor;
@@ -476,14 +536,15 @@
                 
                 // Add a glow to growing tips
                 if (segment.progress < 1) {
-                    // Draw glowing tip
-                    const glowRadius = thickness * 2.5;
+                    // Draw glowing tip with enhanced glow
+                    const glowRadius = thickness * 3.5; // Increased from 2.5 for larger glow
                     const gradient = ctx.createRadialGradient(
                         drawEndX, drawEndY, 0,
                         drawEndX, drawEndY, glowRadius
                     );
                     
-                    gradient.addColorStop(0, `rgba(${GROWTH_RGB.r}, ${GROWTH_RGB.g}, ${GROWTH_RGB.b}, 0.8)`);
+                    // Brighter glow with higher opacity
+                    gradient.addColorStop(0, `rgba(${GROWTH_RGB.r}, ${GROWTH_RGB.g}, ${GROWTH_RGB.b}, 0.9)`); // Increased from 0.8
                     gradient.addColorStop(1, `rgba(${GROWTH_RGB.r}, ${GROWTH_RGB.g}, ${GROWTH_RGB.b}, 0)`);
                     
                     ctx.fillStyle = gradient;
@@ -501,22 +562,21 @@
         
         // Process all queued segments
         processQueuedSegments() {
-            // Process a limited number of segments per frame for performance
-            const segmentsToProcess = Math.min(this.pendingSegments.length, 10);
+            // Process more segments per frame for faster growth
+            const maxToProcess = Math.min(8, this.pendingSegments.length); // Increased from 6
             
-            for (let i = 0; i < segmentsToProcess; i++) {
+            for (let i = 0; i < maxToProcess; i++) {
+                if (this.pendingSegments.length === 0) break;
                 const parentIndex = this.pendingSegments.shift();
                 this.addSegment(parentIndex);
             }
         }
 
-        // Add the missing method
+        // Trigger growth burst
         triggerGrowthBurst() {
-            if (!this.burstMode) {
-                this.burstMode = true;
-                this.burstTimer = 0;
-                this.burstDuration = 30 + Math.floor(Math.random() * 60);
-            }
+            this.burstMode = true;
+            this.burstTimer = 0;
+            this.burstDuration = 60 + Math.floor(Math.random() * 40); // Longer bursts for more growth
         }
         
         endGrowthBurst() {
@@ -526,25 +586,21 @@
     }
 
     function init() {
-        resizeCanvas();
+        // Stop any existing animation
+        if (window.BinaryTrees.animationId) {
+            cancelAnimationFrame(window.BinaryTrees.animationId);
+        }
         
-        // Reset variables
-        time = 0;
-        frameCount = 0;
         activeTrees = [];
-        totalGrowthPerSecond = 0;
-        lastGrowthCheck = 0;
-        growthPulseTimer = 0;
-        
-        // Create initial trees, evenly spaced
+        // Create more trees for density
         for (let i = 0; i < MAX_TREES; i++) {
             activeTrees.push(new BinaryTree(i));
         }
-
-        if (!window.BinaryTrees.active) {
-            window.BinaryTrees.active = true;
-            requestAnimationFrame(animate);
-        }
+        
+        window.BinaryTrees.active = true;
+        time = 0;
+        frameCount = 0;
+        animate();
     }
 
     function update() {
