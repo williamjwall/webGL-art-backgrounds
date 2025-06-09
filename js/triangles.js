@@ -15,6 +15,9 @@
     const canvas = document.getElementById('triangles-canvas');
     const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
     
+    // Mobile detection
+    const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
     if (!gl) {
         console.warn('WebGL not supported, falling back to canvas renderer');
         return;
@@ -55,45 +58,14 @@
         }
     `;
     
-    // Initialize a shader program
-    function initShaderProgram(gl, vsSource, fsSource) {
-        const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
-        const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
-        
-        // Create the shader program
-        const shaderProgram = gl.createProgram();
-        gl.attachShader(shaderProgram, vertexShader);
-        gl.attachShader(shaderProgram, fragmentShader);
-        gl.linkProgram(shaderProgram);
-        
-        // If creating the shader program failed, alert
-        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
-            console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
-            return null;
-        }
-        
-        return shaderProgram;
-    }
-    
-    // Creates a shader of the given type, uploads the source and compiles it
-    function loadShader(gl, type, source) {
-        const shader = gl.createShader(type);
-        
-        // Send the source to the shader object
-        gl.shaderSource(shader, source);
-        
-        // Compile the shader program
-        gl.compileShader(shader);
-        
-        // See if it compiled successfully
-        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-            console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
-            gl.deleteShader(shader);
-            return null;
-        }
-        
-        return shader;
-    }
+    // Touch and interaction variables
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let isDragging = false;
+    let lastDragTime = 0;
+    let dragVelocity = { x: 0, y: 0 };
+    let cameraOffset = { x: 0, y: 0 };
+    let targetCameraOffset = { x: 0, y: 0 };
     
     // Global vars
     let shaderProgram = null;
@@ -142,10 +114,16 @@
         // Start with a time offset of 60 seconds (as if it's been running for a minute)
         startTime = (Date.now() * 0.001) - 60;
         
+        // Adjust number of triangles based on device type
+        const triangleCount = isMobileDevice ? 80 : 150; // Fewer triangles on mobile
+        
         // Initialize triangles and centroids
         initCentroids();
-        triangles = initBuffers(gl);
+        triangles = initBuffers(gl, triangleCount);
         assignClusters(triangles);
+
+        // Setup touch events for mobile interaction
+        setupTouchInteraction();
         
         // Create text overlay canvas if it doesn't exist
         if (!document.getElementById('text-overlay')) {
@@ -171,6 +149,92 @@
         console.log('Triangles initialization complete');
     }
     
+    function setupTouchInteraction() {
+        // Touch events for mobile interaction
+        canvas.addEventListener('touchstart', handleTouchStart, { passive: true });
+        canvas.addEventListener('touchmove', handleTouchMove, { passive: true });
+        canvas.addEventListener('touchend', handleTouchEnd, { passive: true });
+        
+        // Mouse events for desktop interaction
+        canvas.addEventListener('mousedown', handleMouseDown);
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+    }
+    
+    function handleTouchStart(event) {
+        if (event.touches.length === 1) {
+            touchStartX = event.touches[0].clientX;
+            touchStartY = event.touches[0].clientY;
+            isDragging = true;
+            lastDragTime = Date.now();
+        }
+    }
+    
+    function handleTouchMove(event) {
+        if (!isDragging || event.touches.length !== 1) return;
+        
+        const currentX = event.touches[0].clientX;
+        const currentY = event.touches[0].clientY;
+        const deltaX = currentX - touchStartX;
+        const deltaY = currentY - touchStartY;
+        
+        // Update camera offset based on touch movement
+        targetCameraOffset.x += deltaX * 0.01;
+        targetCameraOffset.y -= deltaY * 0.01;
+        
+        // Calculate drag velocity for momentum
+        const now = Date.now();
+        const dt = (now - lastDragTime) / 1000;
+        if (dt > 0) {
+            dragVelocity.x = deltaX * 0.01 / dt;
+            dragVelocity.y = -deltaY * 0.01 / dt;
+        }
+        
+        touchStartX = currentX;
+        touchStartY = currentY;
+        lastDragTime = now;
+    }
+    
+    function handleTouchEnd() {
+        isDragging = false;
+    }
+    
+    function handleMouseDown(event) {
+        touchStartX = event.clientX;
+        touchStartY = event.clientY;
+        isDragging = true;
+        lastDragTime = Date.now();
+    }
+    
+    function handleMouseMove(event) {
+        if (!isDragging) return;
+        
+        const currentX = event.clientX;
+        const currentY = event.clientY;
+        const deltaX = currentX - touchStartX;
+        const deltaY = currentY - touchStartY;
+        
+        // Update camera offset based on mouse movement
+        targetCameraOffset.x += deltaX * 0.01;
+        targetCameraOffset.y -= deltaY * 0.01;
+        
+        // Calculate drag velocity for momentum
+        const now = Date.now();
+        const dt = (now - lastDragTime) / 1000;
+        if (dt > 0) {
+            dragVelocity.x = deltaX * 0.01 / dt;
+            dragVelocity.y = -deltaY * 0.01 / dt;
+        }
+        
+        touchStartX = currentX;
+        touchStartY = currentY;
+        lastDragTime = now;
+    }
+    
+    function handleMouseUp() {
+        isDragging = false;
+    }
+    
     function render(now) {
         if (!Triangles.active) return;
         
@@ -179,31 +243,100 @@
         const elapsedTime = now - startTime;
         then = now;
         
+        // Update camera with momentum
+        updateCamera(deltaTime);
+        
         drawScene(gl, programInfo, triangles, deltaTime, elapsedTime);
         
-        Triangles.animationId = requestAnimationFrame(render);
+        // Use lower frame rate on mobile devices for better performance
+        if (isMobileDevice) {
+            Triangles.animationId = setTimeout(() => {
+                requestAnimationFrame(render);
+            }, 1000 / 30); // Target 30fps for mobile
+        } else {
+            Triangles.animationId = requestAnimationFrame(render);
+        }
+    }
+    
+    function updateCamera(deltaTime) {
+        // Apply momentum if not dragging
+        if (!isDragging) {
+            // Apply drag velocity with decay
+            targetCameraOffset.x += dragVelocity.x * deltaTime;
+            targetCameraOffset.y += dragVelocity.y * deltaTime;
+            
+            // Decay velocity
+            const decay = Math.pow(0.1, deltaTime);
+            dragVelocity.x *= decay;
+            dragVelocity.y *= decay;
+        }
+        
+        // Smooth camera movement
+        cameraOffset.x += (targetCameraOffset.x - cameraOffset.x) * 0.1;
+        cameraOffset.y += (targetCameraOffset.y - cameraOffset.y) * 0.1;
     }
     
     function stopAnimation() {
         console.log('Stopping Triangles animation...');
         Triangles.active = false;
         if (Triangles.animationId) {
-            cancelAnimationFrame(Triangles.animationId);
+            if (isMobileDevice) {
+                clearTimeout(Triangles.animationId);
+            } else {
+                cancelAnimationFrame(Triangles.animationId);
+            }
             Triangles.animationId = null;
         }
+        
+        // Remove event listeners
+        canvas.removeEventListener('touchstart', handleTouchStart);
+        canvas.removeEventListener('touchmove', handleTouchMove);
+        canvas.removeEventListener('touchend', handleTouchEnd);
+        canvas.removeEventListener('mousedown', handleMouseDown);
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
     }
     
     function clearMemory() {
         console.log('Clearing Triangles memory...');
         stopAnimation();
         
+        // Reset camera and interaction variables
+        touchStartX = 0;
+        touchStartY = 0;
+        isDragging = false;
+        dragVelocity = { x: 0, y: 0 };
+        cameraOffset = { x: 0, y: 0 };
+        targetCameraOffset = { x: 0, y: 0 };
+        
         // Remove text overlay if it exists
         const textOverlay = document.getElementById('text-overlay');
         if (textOverlay) {
-            textOverlay.remove();
+            textOverlay.parentNode.removeChild(textOverlay);
         }
         
-        // Clear references
+        // Clear WebGL resources
+        if (gl) {
+            // Clear all buffers
+            const numAttribs = gl.getParameter(gl.MAX_VERTEX_ATTRIBS);
+            for (let i = 0; i < numAttribs; i++) {
+                gl.disableVertexAttribArray(i);
+            }
+            
+            // Delete buffers
+            if (triangles) {
+                gl.deleteBuffer(triangles.position);
+                gl.deleteBuffer(triangles.color);
+            }
+            
+            // Delete shaders
+            if (shaderProgram) {
+                gl.deleteProgram(shaderProgram);
+                shaderProgram = null;
+            }
+        }
+        
+        // Clean up arrays
         triangles = [];
         centroids = [];
     }
@@ -505,8 +638,7 @@
     }
 
     // Use a more strategic distribution across the scene with perfect spacing
-    function initBuffers(gl) {
-        const numTriangles = 120;
+    function initBuffers(gl, count = 150) {
         const triangles = [];
         
         // Calculate initial screen boundaries for proper distribution
@@ -518,8 +650,8 @@
         // Create an evenly distributed grid for triangle placement
         // First calculate how many triangles to place per row/column
         const ratio = aspect > 1 ? aspect : 1 / aspect;
-        const columnsCount = Math.ceil(Math.sqrt(numTriangles * ratio));
-        const rowsCount = Math.ceil(numTriangles / columnsCount);
+        const columnsCount = Math.ceil(Math.sqrt(count * ratio));
+        const rowsCount = Math.ceil(count / columnsCount);
         
         // Calculate spacing
         const xSpacing = bounds.width / (columnsCount + 1);
@@ -530,8 +662,8 @@
         
         // Place triangles in a grid with slight variation
         let count = 0;
-        for (let row = 1; row <= rowsCount && count < numTriangles; row++) {
-            for (let col = 1; col <= columnsCount && count < numTriangles; col++) {
+        for (let row = 1; row <= rowsCount && count < count; row++) {
+            for (let col = 1; col <= columnsCount && count < count; col++) {
                 // Calculate base position in grid
                 const x = bounds.left + xSpacing * col;
                 const y = bounds.bottom + ySpacing * row;
@@ -555,22 +687,20 @@
                 const initialAngle = Math.random() * Math.PI * 2;
                 
                 triangles.push({
-                                        // Add more random initial positions to make it look pre-animated
                     position: [
                         x + xJitter + (Math.random() - 0.5) * 1.5, 
                         y + yJitter + (Math.random() - 0.5) * 1.5, 
                         z + (Math.random() - 0.5) * 2
                     ],
-                    // Give initial velocities in consistent directions for more natural movement
                     velocity: [
                         ((Math.random() - 0.5) * 0.1) + 0.02 * Math.sin(initialAngle), 
                         ((Math.random() - 0.5) * 0.1) + 0.02 * Math.cos(initialAngle), 
                         (Math.random() - 0.5) * 0.03
                     ],
-                size: size,
-                color: [0.5, 0.5, 0.5, 1.0],
-                baseColor: [0.5, 0.5, 0.5, 1.0],
-                angle: initialAngle,
+                    size: size,
+                    color: [0.5, 0.5, 0.5, 1.0],
+                    baseColor: [0.5, 0.5, 0.5, 1.0],
+                    angle: initialAngle,
                     rotationSpeed: rotationSpeed,
                     initialSize: size,
                     cluster: 0,

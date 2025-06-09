@@ -17,6 +17,7 @@
     let spawnTimer = 0;
     let spawnInterval = 60; // Faster spawn rate (was 200ms)
     let fillLevel = 0; // Track how full the container is
+    let isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     
     function resizeCanvas() {
         if (!canvas) return;
@@ -60,18 +61,21 @@
         const height = window.innerHeight;
         const screenSize = Math.min(width, height);
         
-        return {
-            size: screenSize * 0.07, // Larger cube size
-            maxCubes: 1000, // Lots of cubes to fill screen
-            bounceEnergy: 0.4, // Higher bounce for more movement (was 0.2)
-            friction: 0.97, // Less friction for more sliding (was 0.95)
-            initialVelocityX: 1.5, // Stronger initial velocity (was 1)
-            initialVelocityY: 1.5, // Stronger initial velocity (was 1)
-            rotationSpeed: 0.01, // Slow rotation for better stacking
-            collisionPadding: 1.005, // Slightly reduced collision padding (was 1.01)
-            pushStrength: 1.5, // Additional push strength for cubes to move each other
-            settleThreshold: 1.0 // Higher threshold before settling (was 0.8)
+        // Performance adjustments for mobile
+        const mobileSettings = {
+            size: screenSize * 0.08, // Slightly larger cubes on mobile
+            maxCubes: isMobileDevice ? 400 : 1000, // Fewer cubes on mobile
+            bounceEnergy: 0.4,
+            friction: 0.97,
+            initialVelocityX: 1.5,
+            initialVelocityY: 1.5,
+            rotationSpeed: isMobileDevice ? 0.008 : 0.01, // Slower rotation on mobile
+            collisionPadding: 1.005,
+            pushStrength: 1.5,
+            settleThreshold: 1.0
         };
+        
+        return mobileSettings;
     }
 
     let CUBE_SETTINGS = updateCubeSettings();
@@ -514,8 +518,8 @@
     }
 
     function spawnCube() {
-        // Determine if this should be a large cube (5% chance)
-        const isLargeCube = Math.random() < 0.05;
+        // Determine if this should be a large cube (reduced chance on mobile)
+        const isLargeCube = Math.random() < (isMobileDevice ? 0.03 : 0.05);
         
         // Use different spawn logic for large cubes
         const location = findBestSpawnLocation(isLargeCube);
@@ -593,9 +597,12 @@
         // Spawn new cubes if not full
         spawnTimer += 16; // Approximately 60fps
         
+        // Adjust spawn rate based on device type
+        const baseInterval = isMobileDevice ? 80 : 60; // Slower spawn on mobile
+        
         // Keep even timing but add slight variability
         // Each cube will still be evenly timed, but with small variations for naturality
-        const currentSpawnInterval = spawnInterval + (Math.random() - 0.5) * 10;
+        const currentSpawnInterval = baseInterval + (Math.random() - 0.5) * 10;
         
         if (spawnTimer >= currentSpawnInterval && fillLevel < 0.98) {
             spawnTimer = 0;
@@ -651,14 +658,27 @@
         
         update();
         draw();
-        RotatingCubes.animationId = requestAnimationFrame(animate);
+        
+        // Use setTimeout instead of requestAnimationFrame on low-end mobile devices
+        // to reduce frame rate and improve performance
+        if (isMobileDevice && window.devicePixelRatio < 2) {
+            RotatingCubes.animationId = setTimeout(() => {
+                requestAnimationFrame(animate);
+            }, 1000 / 30); // Target 30fps for low-end mobile
+        } else {
+            RotatingCubes.animationId = requestAnimationFrame(animate);
+        }
     }
 
     function stopAnimation() {
         console.log('Stopping Container Filling animation...');
         RotatingCubes.active = false;
         if (RotatingCubes.animationId) {
-            cancelAnimationFrame(RotatingCubes.animationId);
+            if (isMobileDevice && window.devicePixelRatio < 2) {
+                clearTimeout(RotatingCubes.animationId);
+            } else {
+                cancelAnimationFrame(RotatingCubes.animationId);
+            }
             RotatingCubes.animationId = null;
         }
     }

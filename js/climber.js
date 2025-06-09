@@ -13,6 +13,9 @@
 
     const ctx = canvas.getContext('2d');
     
+    // Mobile detection
+    const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
     function resizeCanvas() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
@@ -26,6 +29,17 @@
         primary: '#8B7355',   // Muted brown
         secondary: '#A69080', // Light brown
         accent: '#6B5B73'     // Muted purple
+    };
+
+    // Touch interaction variables
+    const touch = {
+        isActive: false,
+        startX: 0,
+        startY: 0,
+        currentX: 0,
+        currentY: 0,
+        cameraOffset: { x: 0, y: 0 },
+        targetOffset: { x: 0, y: 0 }
     };
 
     // The elusive black cube that tries to escape
@@ -122,20 +136,27 @@
     function generateWorld() {
         boxes.length = 0;
         
+        // Scale down the number of objects for mobile
+        const gridExtent = isMobileDevice ? 2 : 3;
+        const clustersPerGrid = isMobileDevice ? 8 : 15;
+        const boxesPerCluster = isMobileDevice ? 10 : 20;
+        const towersPerGrid = isMobileDevice ? 4 : 8;
+        const bridgeCount = isMobileDevice ? 15 : 25;
+        
         // Create main city-like grid formations
-        for (let gridX = -3; gridX <= 3; gridX++) {
-            for (let gridY = -3; gridY <= 3; gridY++) {
+        for (let gridX = -gridExtent; gridX <= gridExtent; gridX++) {
+            for (let gridY = -gridExtent; gridY <= gridExtent; gridY++) {
                 const centerX = gridX * canvas.width * 1.5;
                 const centerY = gridY * canvas.height * 1.5;
                 
                 // Dense urban clusters
-                for (let cluster = 0; cluster < 15; cluster++) {
+                for (let cluster = 0; cluster < clustersPerGrid; cluster++) {
                     const clusterX = centerX + (Math.random() - 0.5) * canvas.width;
                     const clusterY = centerY + (Math.random() - 0.5) * canvas.height;
                     const clusterZ = Math.random() * 400;
                     
-                    // Each cluster has 15-30 boxes
-                    const boxCount = Math.floor(Math.random() * 16) + 15;
+                    // Each cluster has 10-25 boxes
+                    const boxCount = Math.floor(Math.random() * 16) + boxesPerCluster;
                     
                     for (let i = 0; i < boxCount; i++) {
                         const angle = (i / boxCount) * Math.PI * 2 + Math.random() * 0.5;
@@ -155,12 +176,13 @@
                 }
                 
                 // Add some towering structures
-                for (let tower = 0; tower < 8; tower++) {
+                for (let tower = 0; tower < towersPerGrid; tower++) {
                     const towerX = centerX + (Math.random() - 0.5) * canvas.width * 0.8;
                     const towerY = centerY + (Math.random() - 0.5) * canvas.height * 0.8;
                     
-                    // Stack boxes vertically
-                    for (let level = 0; level < 12; level++) {
+                    // Stack boxes vertically - fewer on mobile
+                    const levelCount = isMobileDevice ? 8 : 12;
+                    for (let level = 0; level < levelCount; level++) {
                         boxes.push({
                             x: towerX + (Math.random() - 0.5) * 40,
                             y: towerY + (Math.random() - 0.5) * 40,
@@ -176,14 +198,15 @@
         }
         
         // Add scattered bridge-like formations
-        for (let bridge = 0; bridge < 25; bridge++) {
+        for (let bridge = 0; bridge < bridgeCount; bridge++) {
             const startX = (Math.random() - 0.5) * canvas.width * 8;
             const startY = (Math.random() - 0.5) * canvas.height * 8;
             const endX = startX + (Math.random() - 0.5) * 800;
             const endY = startY + (Math.random() - 0.5) * 800;
             const bridgeZ = Math.random() * 300 + 100;
             
-            const segments = Math.floor(Math.random() * 20) + 10;
+            // Fewer segments on mobile
+            const segments = Math.floor(Math.random() * (isMobileDevice ? 10 : 20)) + (isMobileDevice ? 5 : 10);
             for (let i = 0; i < segments; i++) {
                 const t = i / segments;
                 boxes.push({
@@ -869,6 +892,12 @@
     }
 
     function updateCamera() {
+        // Handle touch-based camera movement
+        if (touch.isActive) {
+            updateCameraWithTouch();
+            return;
+        }
+        
         const distanceToCube = Math.hypot(camera.x - hiddenCube.x, camera.y - hiddenCube.y);
         
         // Very slow, gentle tracking - don't predict movement as much
@@ -903,6 +932,121 @@
             camera.x += (hiddenCube.x - camera.x) * 0.002;
             camera.y += (hiddenCube.y - camera.y) * 0.002;
         }
+    }
+
+    // Setup touch controls
+    function setupTouchControls() {
+        // Touch events for mobile
+        canvas.addEventListener('touchstart', handleTouchStart, { passive: true });
+        canvas.addEventListener('touchmove', handleTouchMove, { passive: true });
+        canvas.addEventListener('touchend', handleTouchEnd, { passive: true });
+        
+        // Mouse events for desktop
+        canvas.addEventListener('mousedown', handleMouseDown);
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        
+        // Pinch zoom for mobile
+        canvas.addEventListener('gesturestart', handleGestureStart, { passive: true });
+        canvas.addEventListener('gesturechange', handleGestureChange, { passive: true });
+        canvas.addEventListener('gestureend', handleGestureEnd, { passive: true });
+    }
+    
+    function handleTouchStart(event) {
+        if (event.touches.length === 1) {
+            touch.isActive = true;
+            touch.startX = event.touches[0].clientX;
+            touch.startY = event.touches[0].clientY;
+            touch.currentX = touch.startX;
+            touch.currentY = touch.startY;
+        }
+    }
+    
+    function handleTouchMove(event) {
+        if (!touch.isActive || event.touches.length !== 1) return;
+        
+        touch.currentX = event.touches[0].clientX;
+        touch.currentY = event.touches[0].clientY;
+        
+        // Calculate delta from last position
+        const deltaX = touch.currentX - touch.startX;
+        const deltaY = touch.currentY - touch.startY;
+        
+        // Update camera offset
+        touch.targetOffset.x += deltaX * 0.5;
+        touch.targetOffset.y += deltaY * 0.5;
+        
+        // Update start position for next delta calculation
+        touch.startX = touch.currentX;
+        touch.startY = touch.currentY;
+    }
+    
+    function handleTouchEnd() {
+        touch.isActive = false;
+    }
+    
+    function handleMouseDown(event) {
+        touch.isActive = true;
+        touch.startX = event.clientX;
+        touch.startY = event.clientY;
+        touch.currentX = touch.startX;
+        touch.currentY = touch.startY;
+    }
+    
+    function handleMouseMove(event) {
+        if (!touch.isActive) return;
+        
+        touch.currentX = event.clientX;
+        touch.currentY = event.clientY;
+        
+        // Calculate delta from last position
+        const deltaX = touch.currentX - touch.startX;
+        const deltaY = touch.currentY - touch.startY;
+        
+        // Update camera offset
+        touch.targetOffset.x += deltaX * 0.5;
+        touch.targetOffset.y += deltaY * 0.5;
+        
+        // Update start position for next delta calculation
+        touch.startX = touch.currentX;
+        touch.startY = touch.currentY;
+    }
+    
+    function handleMouseUp() {
+        touch.isActive = false;
+    }
+    
+    function handleGestureStart(event) {
+        event.preventDefault();
+        // Store initial zoom level
+        touch.initialZoom = camera.zoom;
+    }
+    
+    function handleGestureChange(event) {
+        event.preventDefault();
+        // Update zoom based on gesture scale
+        camera.targetZoom = touch.initialZoom * event.scale;
+        // Clamp zoom to reasonable values
+        camera.targetZoom = Math.max(0.3, Math.min(1.5, camera.targetZoom));
+    }
+    
+    function handleGestureEnd(event) {
+        event.preventDefault();
+    }
+    
+    // Update camera with touch controls
+    function updateCameraWithTouch() {
+        // Smooth camera offset
+        touch.cameraOffset.x += (touch.targetOffset.x - touch.cameraOffset.x) * 0.1;
+        touch.cameraOffset.y += (touch.targetOffset.y - touch.cameraOffset.y) * 0.1;
+        
+        // Apply offset to camera position
+        camera.x += touch.cameraOffset.x;
+        camera.y += touch.cameraOffset.y;
+        
+        // Reset target offset after applying
+        touch.targetOffset.x = 0;
+        touch.targetOffset.y = 0;
     }
 
     function drawBox(box) {
@@ -1082,28 +1226,67 @@
         updateHiddenCube();
         updateCamera();
         draw();
-        Climber.animationId = requestAnimationFrame(animate);
+        
+        // Use requestAnimationFrame or setTimeout based on device
+        if (isMobileDevice) {
+            // Use setTimeout for mobile to target lower framerate for better performance
+            Climber.animationId = setTimeout(() => {
+                requestAnimationFrame(animate);
+            }, 1000 / 30); // Target 30fps for mobile
+        } else {
+            Climber.animationId = requestAnimationFrame(animate);
+        }
     }
 
     function init() {
-        console.log('Initializing Elusive Cube Chase...');
-        resizeCanvas();
+        console.log('Initializing climber visualization...');
         generateWorld();
+        placeHiddenCube();
+        
+        // Setup touch controls
+        setupTouchControls();
+        
         Climber.active = true;
         animate();
     }
 
     function stopAnimation() {
+        console.log('Stopping climber animation...');
         Climber.active = false;
         if (Climber.animationId) {
-            cancelAnimationFrame(Climber.animationId);
+            if (isMobileDevice) {
+                clearTimeout(Climber.animationId);
+            } else {
+                cancelAnimationFrame(Climber.animationId);
+            }
             Climber.animationId = null;
         }
+        
+        // Remove event listeners
+        canvas.removeEventListener('touchstart', handleTouchStart);
+        canvas.removeEventListener('touchmove', handleTouchMove);
+        canvas.removeEventListener('touchend', handleTouchEnd);
+        canvas.removeEventListener('mousedown', handleMouseDown);
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+        canvas.removeEventListener('gesturestart', handleGestureStart);
+        canvas.removeEventListener('gesturechange', handleGestureChange);
+        canvas.removeEventListener('gestureend', handleGestureEnd);
     }
 
     function clearMemory() {
+        console.log('Clearing climber memory...');
         stopAnimation();
         boxes.length = 0;
+        
+        // Reset touch interaction variables
+        touch.isActive = false;
+        touch.startX = 0;
+        touch.startY = 0;
+        touch.currentX = 0;
+        touch.currentY = 0;
+        touch.cameraOffset = { x: 0, y: 0 };
+        touch.targetOffset = { x: 0, y: 0 };
     }
 
     if (canvas.classList.contains('active')) {

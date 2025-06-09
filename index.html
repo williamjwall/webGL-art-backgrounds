@@ -15,12 +15,14 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
         }
         body {
             font-family: Arial, sans-serif;
             background-color: #111;
             color: #fff;
             overflow: hidden;
+            touch-action: manipulation;
         }
         .container {
             position: relative;
@@ -34,6 +36,7 @@
             width: 100%;
             height: 100%;
             display: none;
+            touch-action: none;
         }
         canvas.active {
             display: block;
@@ -41,29 +44,55 @@
         .controls {
             position: fixed;
             bottom: 20px;
-            right: 20px;
+            left: 0;
+            right: 0;
             display: flex;
-            justify-content: flex-end;
+            justify-content: center;
             z-index: 100;
+            padding: 0 10px;
+            gap: 20px;
         }
         .btn {
-            background-color: rgba(0, 0, 0, 0.6);
+            background-color: rgba(0, 0, 0, 0.5);
             color: white;
-            border: 2px solid white;
-            padding: 10px 20px;
-            margin: 0 10px;
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
             cursor: pointer;
-            font-size: 16px;
-            border-radius: 5px;
-            transition: all 0.3s ease;
-            outline: none;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            font-weight: 300;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            position: relative;
+            overflow: hidden;
         }
-        .btn:hover {
-            background-color: rgba(255, 255, 255, 0.2);
-            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        .btn:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at center, rgba(255, 255, 255, 0.2) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .btn:hover:before, .btn:active:before {
+            opacity: 1;
+        }
+        .btn:active {
+            transform: scale(0.95);
+            box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
+        }
+        .btn svg {
+            width: 20px;
+            height: 20px;
+            fill: white;
+            filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
         }
         #content {
             position: relative;
@@ -73,6 +102,59 @@
         }
         .hidden {
             display: none !important;
+        }
+        
+        /* Mobile-specific styles */
+        @media (max-width: 768px) {
+            .controls {
+                bottom: 15px;
+                gap: 15px;
+            }
+            .btn {
+                width: 45px;
+                height: 45px;
+            }
+            .btn svg {
+                width: 18px;
+                height: 18px;
+            }
+        }
+        
+        /* For smaller mobile screens */
+        @media (max-width: 480px) {
+            .controls {
+                bottom: 10px;
+                gap: 12px;
+            }
+            .btn {
+                width: 40px;
+                height: 40px;
+            }
+            .btn svg {
+                width: 16px;
+                height: 16px;
+            }
+        }
+        
+        /* Add swipe indicator for mobile */
+        .swipe-indicator {
+            position: fixed;
+            top: 10px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            padding: 5px;
+            z-index: 100;
+            pointer-events: none;
+            text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
+        }
+        
+        @media (min-width: 769px) {
+            .swipe-indicator {
+                display: none;
+            }
         }
     </style>
 </head>
@@ -89,9 +171,19 @@
         <canvas id="water-canvas"></canvas>
         <canvas id="lifesarrival-canvas"></canvas>
         
+        <div class="swipe-indicator">Swipe left/right to navigate</div>
+        
         <div class="controls">
-            <button class="btn" id="prev-btn">Previous</button>
-            <button class="btn" id="next-btn">Next</button>
+            <button class="btn" id="prev-btn" aria-label="Previous">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+                </svg>
+            </button>
+            <button class="btn" id="next-btn" aria-label="Next">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+                </svg>
+            </button>
         </div>
     </div>
 
@@ -121,6 +213,14 @@
             activeVisualization: null,
             loadedScripts: new Set(),
             pendingCleanup: new Set()
+        };
+
+        // Track touch events
+        const touchControls = {
+            startX: 0,
+            startY: 0,
+            threshold: 50, // minimum distance to be considered a swipe
+            isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
         };
 
         // Load script with version control and error handling
@@ -465,6 +565,35 @@
                         navigate(1);
                     }
                 });
+                
+                // Add touch controls for mobile
+                let container = document.querySelector('.container');
+                
+                container.addEventListener('touchstart', (e) => {
+                    touchControls.startX = e.touches[0].clientX;
+                    touchControls.startY = e.touches[0].clientY;
+                }, { passive: true });
+                
+                container.addEventListener('touchend', (e) => {
+                    if (!e.changedTouches[0]) return;
+                    
+                    const endX = e.changedTouches[0].clientX;
+                    const endY = e.changedTouches[0].clientY;
+                    
+                    const diffX = touchControls.startX - endX;
+                    const diffY = touchControls.startY - endY;
+                    
+                    // Only register horizontal swipes where horizontal movement > vertical movement
+                    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > touchControls.threshold) {
+                        if (diffX > 0) {
+                            // Swipe left, go to next
+                            navigate(1);
+                        } else {
+                            // Swipe right, go to previous
+                            navigate(-1);
+                        }
+                    }
+                }, { passive: true });
 
                 // Start performance monitoring
                 setInterval(checkPerformance, 1000);
@@ -487,6 +616,44 @@
                             }
                         }
                     }
+                });
+                
+                // Handle orientation changes for mobile
+                window.addEventListener('orientationchange', () => {
+                    // Wait for orientation change to complete
+                    setTimeout(() => {
+                        // Resize all canvases
+                        document.querySelectorAll('canvas').forEach(canvas => {
+                            canvas.width = window.innerWidth;
+                            canvas.height = window.innerHeight;
+                        });
+                        
+                        // Reinitialize current visualization
+                        if (resources.activeVisualization && typeof resources.activeVisualization.init === 'function') {
+                            resources.activeVisualization.init();
+                        }
+                    }, 300);
+                });
+                
+                // Handle resize events
+                window.addEventListener('resize', () => {
+                    // Debounce resize events
+                    if (resources.resizeTimeout) {
+                        clearTimeout(resources.resizeTimeout);
+                    }
+                    
+                    resources.resizeTimeout = setTimeout(() => {
+                        // Resize active canvas
+                        if (resources.activeCanvas) {
+                            resources.activeCanvas.width = window.innerWidth;
+                            resources.activeCanvas.height = window.innerHeight;
+                            
+                            // Reinitialize current visualization
+                            if (resources.activeVisualization && typeof resources.activeVisualization.init === 'function') {
+                                resources.activeVisualization.init();
+                            }
+                        }
+                    }, 250);
                 });
 
                 // Handle page unload with thorough cleanup
