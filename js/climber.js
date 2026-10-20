@@ -1,5 +1,5 @@
-// Climber - a small dark cube wandering across an endless isometric block terrain,
-// dotted with "latent" tiles that look half-dreamt by a model
+// Climber - a small black cube wandering across an endless isometric block terrain,
+// dotted with abstract tiles built from smaller blocks at random depths
 (function() {
     window.Climber = {
         active: false,
@@ -14,19 +14,18 @@
 
     const ctx = canvas.getContext('2d', { alpha: false });
 
-    // Three natural colours; everything else is a flat shade of one of them
-    const MOSS = [92, 107, 72];
-    const STONE = [152, 143, 122];
-    const SAND = [224, 210, 180];
-    const BG = rgb(MOSS, 0.3);
+    // Three earth colours; everything else is a flat shade of one of them
+    const BROWN = [124, 90, 62];
+    const TAN = [196, 164, 124];
+    const BEIGE = [230, 216, 192];
+    const BG = rgb(BROWN, 0.34);
 
     const MAX_LEVEL = 22;      // heights are stored in half-cell levels
     const MAX_CLIMB = 3;       // levels the cube can hop up
     const TRAIL_LIFE = 5;      // seconds a visited tile is avoided
 
     // Abstract tile kinds
-    const PLAIN = 0, VOXEL = 1, LAYERS = 2, DITHER = 3, GLITCH = 4, WIRE = 5, FACET = 6, FLOAT = 7;
-    const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+    const PLAIN = 0, VOXEL = 1, LAYERS = 2, PILLARS = 3, STEPS = 4, FLOAT = 5;
 
     let W = 0, H = 0, dpr = 1;
     let TW = 48, TH = 24, ZU = 29; // tile width, tile height, px per height unit
@@ -80,14 +79,14 @@
         if (level >= 2 && hash(i, j, 3) < 0.03) {
             level += 4 + Math.floor(hash(i, j, 4) * 6);
         }
-        level = Math.min(level, MAX_LEVEL);
-
-        // Abstract tiles are sparse, but gather in loose drifts
+        // Abstract tiles are sparse, but gather in loose drifts, and sit at random depths
         const drift = Math.max(0, valueNoise(i / 9, j / 9, 11) - 0.55) / 0.45;
         let kind = PLAIN;
         if (hash(i, j, 12) < 0.03 + drift * 0.35) {
-            kind = 1 + Math.floor(hash(i, j, 13) * 7);
+            kind = 1 + Math.floor(hash(i, j, 13) * 5);
+            level += Math.floor(hash(i, j, 21) * 5) - 2;
         }
+        level = Math.max(0, Math.min(level, MAX_LEVEL));
 
         cell = level | (kind << 5);
         if (cellCache.size > 60000) cellCache.clear();
@@ -112,14 +111,13 @@
         return {
             band: band,
             topStr: rgb(c, 1),
-            shadeStr: rgb(c, 0.86),
             leftStr: rgb(c, 0.72),
             rightStr: rgb(c, 0.52)
         };
     }
 
     function buildPalette() {
-        swatches = [swatch(MOSS, 0), swatch(STONE, 1), swatch(SAND, 2)];
+        swatches = [swatch(BROWN, 0), swatch(TAN, 1), swatch(BEIGE, 2)];
         palette = [];
         for (let l = 0; l <= MAX_LEVEL; l++) {
             palette.push(swatches[l < 2 ? 0 : l < 6 ? 1 : 2]);
@@ -195,32 +193,15 @@
         const y0 = climber.y - s / 2, y1 = climber.y + s / 2;
         const zb = climber.z, zt = climber.z + 0.36 * stretch;
 
-        // Flat shadow on the surface beneath
-        const ground = climber.t < 1 ? Math.max(climber.fh, climber.th) : climber.th;
-        const r = 0.24 / (1 + (climber.z - ground) * 0.8);
-        ctx.fillStyle = 'rgba(0,0,0,0.22)';
-        ctx.beginPath();
-        ctx.ellipse(sx(climber.x, climber.y), sy(climber.x, climber.y, ground),
-                    r * Math.SQRT2 * TW / 2, r * Math.SQRT2 * TH / 2, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = rgb(MOSS, 0.38);
+        ctx.fillStyle = '#262422';
         quad(sx(x0, y0), sy(x0, y0, zt), sx(x1, y0), sy(x1, y0, zt),
              sx(x1, y1), sy(x1, y1, zt), sx(x0, y1), sy(x0, y1, zt));
-        ctx.fillStyle = rgb(MOSS, 0.16);
+        ctx.fillStyle = '#050505';
         quad(sx(x1, y0), sy(x1, y0, zt), sx(x1, y1), sy(x1, y1, zt),
              sx(x1, y1), sy(x1, y1, zb), sx(x1, y0), sy(x1, y0, zb));
-        ctx.fillStyle = rgb(MOSS, 0.25);
+        ctx.fillStyle = '#121110';
         quad(sx(x0, y1), sy(x0, y1, zt), sx(x1, y1), sy(x1, y1, zt),
              sx(x1, y1), sy(x1, y1, zb), sx(x0, y1), sy(x0, y1, zb));
-        // Thin rim on the top edges
-        ctx.strokeStyle = rgb(SAND, 0.9);
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(sx(x0, y1), sy(x0, y1, zt));
-        ctx.lineTo(sx(x1, y1), sy(x1, y1, zt));
-        ctx.lineTo(sx(x1, y0), sy(x1, y0, zt));
-        ctx.stroke();
     }
 
     // ---- Drawing helpers ----
@@ -246,11 +227,6 @@
         ctx.fillStyle = top || sw.topStr;
         quad(sx(x0, y0), sy(x0, y0, zt), sx(x1, y0), sy(x1, y0, zt),
              sx(x1, y1), sy(x1, y1, zt), sx(x0, y1), sy(x0, y1, zt));
-    }
-
-    function topQuad(x0, y0, x1, y1, z) {
-        quad(sx(x0, y0), sy(x0, y0, z), sx(x1, y0), sy(x1, y0, z),
-             sx(x1, y1), sy(x1, y1, z), sx(x0, y1), sy(x0, y1, z));
     }
 
     // Lowest point of this column that can show past its front neighbours
@@ -289,26 +265,25 @@
         quad(x0, y0, x0 + hw, y0 + hh, x0, y0 + TH, x0 - hw, y0 + hh);
     }
 
-    // 3x3 mosaic of little columns that re-samples itself every few seconds
+    // 3x3 mosaic of little columns rising and settling in a slow wave
     function drawVoxel(i, j, level, sw) {
-        const h = level / 2, base = h - 0.4;
+        const h = level / 2, base = h - 0.45;
         const floor = floorOf(i, j, h);
         if (base > floor) block(i, j, i + 1, j + 1, floor, base, sw);
 
-        const step = Math.floor(clock / 2.2 + hash(i, j, 16) * 10);
+        const phase = hash(i, j, 16) * 6.28;
         for (let d = 0; d <= 4; d++) {
             for (let a = Math.max(0, d - 2); a <= Math.min(2, d); a++) {
                 const b = d - a;
-                const r = hash(i * 3 + a, j * 3 + b, 20 + step);
-                const zt = h - Math.floor(r * 3) * 0.1;
-                const pick = hash(i * 3 + a, j * 3 + b, 40 + step);
+                const zt = h - 0.15 - 0.15 * Math.sin(clock * 0.7 + a * 1.1 + b * 0.7 + phase);
+                const pick = hash(i * 3 + a, j * 3 + b, 40);
                 const s = pick < 0.6 ? sw : swatches[(sw.band + (pick < 0.85 ? 1 : 2)) % 3];
                 block(i + a / 3, j + b / 3, i + (a + 1) / 3, j + (b + 1) / 3, base, zt, s);
             }
         }
     }
 
-    // Thin slabs with breathing gaps, each nudged off-axis like a stack of network layers
+    // Thin slabs with breathing gaps, each drifting a little off-axis
     function drawLayers(i, j, level, sw) {
         const h = level / 2;
         const floor = floorOf(i, j, h);
@@ -328,107 +303,41 @@
         }
     }
 
-    // Ordered-dither top whose density slowly breathes between two colours
-    function drawDither(i, j, level, sw) {
-        drawPlain(i, j, level, sw);
+    // 2x2 pillars dropped to random depths; the back one stays level for walking
+    function drawPillars(i, j, level, sw) {
         const h = level / 2;
+        const floor = Math.min(floorOf(i, j, h), h - 1);
         const alt = altOf(i, j, sw);
-        const cycle = Math.floor(clock * 2 + hash(i, j, 18) * 32) % 32;
-        const t = cycle < 16 ? cycle : 32 - cycle;
-        ctx.fillStyle = alt.topStr;
-        for (let b = 0; b < 4; b++) {
-            for (let a = 0; a < 4; a++) {
-                if (BAYER[b * 4 + a] < t) topQuad(i + a / 4, j + b / 4, i + (a + 1) / 4, j + (b + 1) / 4, h);
-            }
+        const cells = [[0, 0], [1, 0], [0, 1], [1, 1]];
+        for (const [a, b] of cells) {
+            const drop = a + b === 0 ? 0 : 0.2 + Math.floor(hash(i * 2 + a, j * 2 + b, 22) * 4) * 0.2;
+            const s = hash(i * 2 + a, j * 2 + b, 23) < 0.3 ? alt : sw;
+            block(i + a / 2, j + b / 2, i + (a + 1) / 2, j + (b + 1) / 2, floor, h - drop, s);
         }
     }
 
-    // Faces cut into bands that occasionally slip sideways
-    function drawGlitch(i, j, level, sw) {
+    // Nested terraces narrowing to a small summit
+    function drawSteps(i, j, level, sw) {
         const h = level / 2;
         const floor = floorOf(i, j, h);
         const alt = altOf(i, j, sw);
-        const step = Math.floor(clock * 5);
-        const live = hash(i, j, 60 + step) < 0.3;
-
-        // Bottom band first so each band's top hides under the one above
-        const bands = Math.ceil((h - floor) / 0.25);
-        for (let k = bands - 1; k >= 0; k--) {
-            const zt = h - k * 0.25, zb = Math.max(floor, zt - 0.25);
-            const r = hash(i + k * 7, j, 80 + step);
-            const slip = live && r < 0.5 ? (r - 0.25) * TW * 0.5 : 0;
-            const s = live && r > 0.85 ? alt : sw;
-            ctx.save();
-            ctx.translate(slip, 0);
-            block(i, j, i + 1, j + 1, zb, zt, s);
-            ctx.restore();
-        }
-        ctx.fillStyle = sw.topStr;
-        topQuad(i, j, i + 1, j + 1, h);
-    }
-
-    // Outline only - a tile the model hasn't filled in yet
-    function drawWire(i, j, level, sw) {
-        const h = level / 2;
-        const floor = floorOf(i, j, h);
-        ctx.fillStyle = 'rgba(224,210,180,0.08)';
-        topQuad(i, j, i + 1, j + 1, h);
-
-        ctx.strokeStyle = rgb(SAND, 0.85);
-        ctx.lineWidth = Math.max(1, TW / 48);
-        ctx.beginPath();
-        const corner = (x, y, z) => [sx(x, y), sy(x, y, z)];
-        const ring = [[i, j], [i + 1, j], [i + 1, j + 1], [i, j + 1]];
-        for (const z of [h, floor]) {
-            ring.forEach(([x, y], n) => {
-                const [px, py] = corner(x, y, z);
-                if (n === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-            });
-            ctx.closePath();
-        }
-        for (const [x, y] of [[i + 1, j], [i + 1, j + 1], [i, j + 1]]) {
-            ctx.moveTo(...corner(x, y, h));
-            ctx.lineTo(...corner(x, y, floor));
-        }
-        // Inner grid
-        ctx.moveTo(...corner(i + 0.5, j, h)); ctx.lineTo(...corner(i + 0.5, j + 1, h));
-        ctx.moveTo(...corner(i, j + 0.5, h)); ctx.lineTo(...corner(i + 1, j + 0.5, h));
-        ctx.stroke();
-    }
-
-    // Low-poly top: four triangles fanned from the centre
-    function drawFacet(i, j, level, sw) {
-        drawPlain(i, j, level, sw);
-        const h = level / 2;
-        const alt = altOf(i, j, sw);
-        const cx = sx(i + 0.5, j + 0.5), cy = sy(i + 0.5, j + 0.5, h);
-        const pts = [[i, j], [i + 1, j], [i + 1, j + 1], [i, j + 1]];
-        const fills = [sw.shadeStr, alt.topStr, sw.topStr, alt.shadeStr];
-        const spin = Math.floor(hash(i, j, 19) * 4);
-        for (let n = 0; n < 4; n++) {
-            const [ax, ay] = pts[n], [bx, by] = pts[(n + 1) % 4];
-            ctx.fillStyle = fills[(n + spin) % 4];
-            ctx.beginPath();
-            ctx.moveTo(cx, cy);
-            ctx.lineTo(sx(ax, ay), sy(ax, ay, h));
-            ctx.lineTo(sx(bx, by), sy(bx, by, h));
-            ctx.closePath();
-            ctx.fill();
+        const tiers = 2 + Math.floor(hash(i, j, 24) * 2);
+        for (let k = 0; k < tiers; k++) {
+            const inset = k * 0.12;
+            const zt = h - (tiers - 1 - k) * 0.22;
+            const zb = k === 0 ? Math.min(floor, zt - 0.22) : zt - 0.22;
+            block(i + inset, j + inset, i + 1 - inset, j + 1 - inset, zb, zt, k % 2 ? alt : sw);
         }
     }
 
-    // A slab hovering over its own tile, casting a flat shadow
+    // A slab hovering over its own tile
     function drawFloat(i, j, level, sw) {
         drawPlain(i, j, level, sw);
         const h = level / 2;
-        const lift = floatLift(i, j);
-        const r = 0.36 - (lift - 0.7) * 0.4;
-        ctx.fillStyle = 'rgba(0,0,0,0.18)';
-        topQuad(i + 0.5 - r, j + 0.5 - r, i + 0.5 + r, j + 0.5 + r, h);
-        block(i + 0.04, j + 0.04, i + 0.96, j + 0.96, h + lift - 0.3, h + lift, altOf(i, j, sw));
+        block(i + 0.04, j + 0.04, i + 0.96, j + 0.96, h + floatLift(i, j) - 0.3, h + floatLift(i, j), altOf(i, j, sw));
     }
 
-    const DRAW = [drawPlain, drawVoxel, drawLayers, drawDither, drawGlitch, drawWire, drawFacet, drawFloat];
+    const DRAW = [drawPlain, drawVoxel, drawLayers, drawPillars, drawSteps, drawFloat];
 
     function draw() {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
