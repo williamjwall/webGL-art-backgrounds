@@ -807,13 +807,13 @@
                     cleanupResources();
                 }
 
-                // Load initial visualization - starting with climber
-                console.log('Loading climber visualization...');
-                await loadScript('js/climber.js');
+                // Load initial visualization - starting with water
+                console.log('Loading water visualization...');
+                await loadScript('js/water.js');
                 
                 // Preload all other visualization scripts
                 console.log('Preloading other visualizations...');
-                await loadScript('js/water.js');
+                await loadScript('js/climber.js');
                 await loadScript('js/plankton.js');
                 await loadScript('js/triangles.js');
                 await loadScript('js/rotating_cubes.js');
@@ -823,13 +823,13 @@
                 await loadScript('js/roots.js');  // decision trees
                 await loadScript('js/lifesarrival.js');
                 
-                console.log('Switching to climber canvas...');
-                await switchVisualization('climber-canvas');
+                console.log('Switching to water canvas...');
+                await switchVisualization('water-canvas');
 
                 // Define the order of visualizations
                 const canvases = [
-                    'climber-canvas',           // Climber (start here)
-                    'water-canvas',             // Water
+                    'water-canvas',             // Water (start here)
+                    'climber-canvas',           // Climber
                     'plankton-canvas',          // Plankton
                     'triangles-canvas',         // Triangles
                     'rotating-cubes-canvas',    // RotatingCubes
@@ -840,8 +840,8 @@
                     'lifesarrival-canvas'       // LifesArrival
                 ];
                 
-                // Initialize currentIndex for climber-canvas
-                let currentIndex = 0; // Climber is first in the array
+                // Initialize currentIndex for water-canvas
+                let currentIndex = 0; // Water is first in the array
 
                 // Function to switch to next/previous visualization
                 async function navigate(direction) {

@@ -1,4 +1,5 @@
-// Climber - a small dark cube wandering across an endless isometric block terrain
+// Climber - a small dark cube wandering across an endless isometric block terrain,
+// dotted with "latent" tiles that look half-dreamt by a model
 (function() {
     window.Climber = {
         active: false,
@@ -13,18 +14,19 @@
 
     const ctx = canvas.getContext('2d', { alpha: false });
 
-    // Flat palette - discrete height bands, dusk plum lowlands up to sand peaks
-    const BANDS = [[43, 36, 51], [61, 50, 71], [90, 74, 94], [138, 106, 106], [196, 154, 122], [226, 207, 174]];
-    const BAND_LEVELS = [0, 2, 4, 6, 9, 13];   // first level of each band
-    const FIELD = [[111, 143, 166], [74, 98, 120]]; // steel-blue colour fields, light / dark
-    const ACCENT = '#ff8a5c';
-    const BONE = '#e9e4d8';
-    const INK = '#1b1820';
-    const BG = '#16131b';
+    // Three natural colours; everything else is a flat shade of one of them
+    const MOSS = [92, 107, 72];
+    const STONE = [152, 143, 122];
+    const SAND = [224, 210, 180];
+    const BG = rgb(MOSS, 0.3);
 
     const MAX_LEVEL = 22;      // heights are stored in half-cell levels
     const MAX_CLIMB = 3;       // levels the cube can hop up
-    const TRAIL_LIFE = 5;      // seconds a visited tile stays marked
+    const TRAIL_LIFE = 5;      // seconds a visited tile is avoided
+
+    // Abstract tile kinds
+    const PLAIN = 0, VOXEL = 1, LAYERS = 2, DITHER = 3, GLITCH = 4, WIRE = 5, FACET = 6, FLOAT = 7;
+    const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 
     let W = 0, H = 0, dpr = 1;
     let TW = 48, TH = 24, ZU = 29; // tile width, tile height, px per height unit
@@ -32,7 +34,8 @@
     const camera = { x: 0, y: 0 };
     const drag = { active: false, lastX: 0, lastY: 0, x: 0, y: 0 };
     const trail = new Map();
-    const heightCache = new Map();
+    const cellCache = new Map();
+    let swatches = [];
     let palette = [];
     let listenersAttached = false;
     let lastTime = 0;
@@ -43,6 +46,7 @@
         ti: 0, tj: 0, th: 0,   // hop target cell + height
         t: 1, duration: 0.4,
         pause: 0.5,
+        land: 0,               // squash after landing, 1 -> 0
         heading: Math.random() * Math.PI * 2,
         x: 0.5, y: 0.5, z: 0
     };
@@ -64,50 +68,62 @@
         return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
     }
 
-    function levelAt(i, j) {
+    // Packed as level | kind << 5
+    function cellAt(i, j) {
         const key = i * 65536 + j;
-        let level = heightCache.get(key);
-        if (level !== undefined) return level;
+        let cell = cellCache.get(key);
+        if (cell !== undefined) return cell;
 
         const n = valueNoise(i / 11, j / 11, 1) * 0.7 + valueNoise(i / 4, j / 4, 2) * 0.3;
-        level = Math.max(0, Math.floor((n - 0.32) * 18));
+        let level = Math.max(0, Math.floor((n - 0.32) * 18));
         // Occasional towers
         if (level >= 2 && hash(i, j, 3) < 0.03) {
             level += 4 + Math.floor(hash(i, j, 4) * 6);
         }
         level = Math.min(level, MAX_LEVEL);
 
-        if (heightCache.size > 60000) heightCache.clear();
-        heightCache.set(key, level);
-        return level;
+        // Abstract tiles are sparse, but gather in loose drifts
+        const drift = Math.max(0, valueNoise(i / 9, j / 9, 11) - 0.55) / 0.45;
+        let kind = PLAIN;
+        if (hash(i, j, 12) < 0.03 + drift * 0.35) {
+            kind = 1 + Math.floor(hash(i, j, 13) * 7);
+        }
+
+        cell = level | (kind << 5);
+        if (cellCache.size > 60000) cellCache.clear();
+        cellCache.set(key, cell);
+        return cell;
+    }
+
+    function levelAt(i, j) { return cellAt(i, j) & 31; }
+    function kindAt(i, j) { return cellAt(i, j) >> 5; }
+
+    function floatLift(i, j) {
+        return 0.7 + 0.12 * Math.sin(clock * 1.3 + hash(i, j, 15) * 6.28);
+    }
+
+    // Height the climber stands at
+    function surfaceAt(i, j) {
+        const h = levelAt(i, j) / 2;
+        return kindAt(i, j) === FLOAT ? h + floatLift(i, j) : h;
     }
 
     function swatch(c, band) {
         return {
             band: band,
             topStr: rgb(c, 1),
-            shadeStr: rgb(c, 0.82),
+            shadeStr: rgb(c, 0.86),
             leftStr: rgb(c, 0.72),
             rightStr: rgb(c, 0.52)
         };
     }
 
-    // palette[level] = [plain, colour-field]
     function buildPalette() {
+        swatches = [swatch(MOSS, 0), swatch(STONE, 1), swatch(SAND, 2)];
         palette = [];
         for (let l = 0; l <= MAX_LEVEL; l++) {
-            let band = 0;
-            while (band < BANDS.length - 1 && l >= BAND_LEVELS[band + 1]) band++;
-            palette.push([
-                swatch(BANDS[band], band),
-                swatch(FIELD[band >= 3 ? 0 : 1], band)
-            ]);
+            palette.push(swatches[l < 2 ? 0 : l < 6 ? 1 : 2]);
         }
-    }
-
-    // Large, hard-edged patches where the terrain switches to the field colour
-    function inField(i, j) {
-        return valueNoise(i / 23, j / 23, 7) > 0.74;
     }
 
     function rgb(c, k) {
@@ -124,21 +140,22 @@
     function chooseNextHop() {
         climber.heading += (Math.random() - 0.5) * 0.9;
         const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-        const fromLevel = levelAt(climber.ti, climber.tj);
+        const from = surfaceAt(climber.ti, climber.tj);
         let best = null, bestScore = -Infinity;
 
         for (const [di, dj] of dirs) {
             const ni = climber.ti + di, nj = climber.tj + dj;
-            const dl = levelAt(ni, nj) - fromLevel;
+            const dl = (surfaceAt(ni, nj) - from) * 2;
             let score = Math.cos(Math.atan2(dj, di) - climber.heading) + Math.random() * 0.8;
             score += dl > 0 ? 0.15 * dl : 0;         // it likes to climb
+            if (kindAt(ni, nj) !== PLAIN) score += 0.5; // and it's curious
             if (dl > MAX_CLIMB) score -= 4 + dl;      // walls are a last resort
             if (trail.has(ni * 65536 + nj)) score -= 0.4;
             if (score > bestScore) { bestScore = score; best = [ni, nj]; }
         }
 
-        climber.fi = climber.ti; climber.fj = climber.tj; climber.fh = fromLevel / 2;
-        climber.ti = best[0]; climber.tj = best[1]; climber.th = levelAt(best[0], best[1]) / 2;
+        climber.fi = climber.ti; climber.fj = climber.tj; climber.fh = from;
+        climber.ti = best[0]; climber.tj = best[1]; climber.th = surfaceAt(best[0], best[1]);
         climber.t = 0;
         climber.duration = 0.34 + Math.abs(climber.th - climber.fh) * 0.06;
     }
@@ -148,12 +165,18 @@
             climber.t = Math.min(1, climber.t + dt / climber.duration);
             if (climber.t === 1) {
                 trail.set(climber.ti * 65536 + climber.tj, clock);
+                climber.land = 1;
                 climber.pause = Math.random() < 0.08 ? 1.2 + Math.random() * 1.5 : 0.08 + Math.random() * 0.35;
             }
         } else {
             climber.pause -= dt;
             if (climber.pause <= 0) chooseNextHop();
         }
+        climber.land = Math.max(0, climber.land - dt * 5);
+
+        // Floating slabs bob, so heights are re-read every frame
+        climber.fh = surfaceAt(climber.fi, climber.fj);
+        climber.th = surfaceAt(climber.ti, climber.tj);
 
         const t = climber.t;
         const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
@@ -165,34 +188,33 @@
     }
 
     function drawClimber() {
-        const s = 0.42;
+        // Stretch mid-hop, squash on landing
+        const stretch = 1 + 0.2 * Math.sin(Math.PI * climber.t) - 0.25 * climber.land;
+        const s = 0.42 / Math.sqrt(stretch);
         const x0 = climber.x - s / 2, x1 = climber.x + s / 2;
         const y0 = climber.y - s / 2, y1 = climber.y + s / 2;
-        const zb = climber.z, zt = climber.z + s * 0.85;
+        const zb = climber.z, zt = climber.z + 0.36 * stretch;
 
-        // Flat target ring on the surface beneath
+        // Flat shadow on the surface beneath
         const ground = climber.t < 1 ? Math.max(climber.fh, climber.th) : climber.th;
-        const lx = sx(climber.x, climber.y), ly = sy(climber.x, climber.y, ground);
-        ctx.strokeStyle = ACCENT;
-        ctx.lineWidth = Math.max(1, TW / 28);
+        const r = 0.24 / (1 + (climber.z - ground) * 0.8);
+        ctx.fillStyle = 'rgba(0,0,0,0.22)';
         ctx.beginPath();
-        ctx.ellipse(lx, ly, TW * 0.42, TH * 0.42, 0, 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.ellipse(sx(climber.x, climber.y), sy(climber.x, climber.y, ground),
+                    r * Math.SQRT2 * TW / 2, r * Math.SQRT2 * TH / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
 
-        // Top
-        ctx.fillStyle = '#2b2331';
+        ctx.fillStyle = rgb(MOSS, 0.38);
         quad(sx(x0, y0), sy(x0, y0, zt), sx(x1, y0), sy(x1, y0, zt),
              sx(x1, y1), sy(x1, y1, zt), sx(x0, y1), sy(x0, y1, zt));
-        // Right face (x = x1)
-        ctx.fillStyle = '#0f0c12';
+        ctx.fillStyle = rgb(MOSS, 0.16);
         quad(sx(x1, y0), sy(x1, y0, zt), sx(x1, y1), sy(x1, y1, zt),
              sx(x1, y1), sy(x1, y1, zb), sx(x1, y0), sy(x1, y0, zb));
-        // Left face (y = y1)
-        ctx.fillStyle = '#1a151e';
+        ctx.fillStyle = rgb(MOSS, 0.25);
         quad(sx(x0, y1), sy(x0, y1, zt), sx(x1, y1), sy(x1, y1, zt),
              sx(x1, y1), sy(x1, y1, zb), sx(x0, y1), sy(x0, y1, zb));
-        // Thin warm rim on the top edges
-        ctx.strokeStyle = 'rgba(255,190,140,0.55)';
+        // Thin rim on the top edges
+        ctx.strokeStyle = rgb(SAND, 0.9);
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(sx(x0, y1), sy(x0, y1, zt));
@@ -200,6 +222,8 @@
         ctx.lineTo(sx(x1, y0), sy(x1, y0, zt));
         ctx.stroke();
     }
+
+    // ---- Drawing helpers ----
 
     function quad(ax, ay, bx, by, cx, cy, dx, dy) {
         ctx.beginPath();
@@ -211,97 +235,200 @@
         ctx.fill();
     }
 
+    // Axis-aligned block from (x0, y0) to (x1, y1), zb to zt; visible faces only
+    function block(x0, y0, x1, y1, zb, zt, sw, top) {
+        ctx.fillStyle = sw.rightStr;
+        quad(sx(x1, y0), sy(x1, y0, zt), sx(x1, y1), sy(x1, y1, zt),
+             sx(x1, y1), sy(x1, y1, zb), sx(x1, y0), sy(x1, y0, zb));
+        ctx.fillStyle = sw.leftStr;
+        quad(sx(x0, y1), sy(x0, y1, zt), sx(x1, y1), sy(x1, y1, zt),
+             sx(x1, y1), sy(x1, y1, zb), sx(x0, y1), sy(x0, y1, zb));
+        ctx.fillStyle = top || sw.topStr;
+        quad(sx(x0, y0), sy(x0, y0, zt), sx(x1, y0), sy(x1, y0, zt),
+             sx(x1, y1), sy(x1, y1, zt), sx(x0, y1), sy(x0, y1, zt));
+    }
+
+    function topQuad(x0, y0, x1, y1, z) {
+        quad(sx(x0, y0), sy(x0, y0, z), sx(x1, y0), sy(x1, y0, z),
+             sx(x1, y1), sy(x1, y1, z), sx(x0, y1), sy(x0, y1, z));
+    }
+
+    // Lowest point of this column that can show past its front neighbours
+    function floorOf(i, j, h) {
+        return Math.min(h, levelAt(i + 1, j) / 2, levelAt(i, j + 1) / 2);
+    }
+
+    // A second colour for abstract tiles, never the tile's own
+    function altOf(i, j, sw) {
+        return swatches[(sw.band + 1 + (hash(i, j, 14) < 0.5 ? 0 : 1)) % 3];
+    }
+
     // ---- Rendering ----
 
-    // Iso-plane helpers: (u, v) are cell-local coords on the top face at height h
-    function topPoly(i, j, h, pts) {
-        ctx.beginPath();
-        for (let n = 0; n < pts.length; n += 2) {
-            const x = sx(i + pts[n], j + pts[n + 1]), y = sy(i + pts[n], j + pts[n + 1], h);
-            if (n === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-        }
-        ctx.closePath();
-        ctx.fill();
-    }
-
-    function topEllipse(i, j, h, r) {
-        ctx.beginPath();
-        ctx.ellipse(sx(i + 0.5, j + 0.5), sy(i + 0.5, j + 0.5, h),
-                    r * Math.SQRT2 * TW / 2, r * Math.SQRT2 * TH / 2, 0, 0, Math.PI * 2);
-    }
-
-    // Sparse geometric marks on tile tops
-    function drawMotif(i, j, h, v) {
-        const m = hash(i, j, 6);
-        if (m > 0.2) return;
-        const ink = v.band >= 3 ? INK : BONE;
-
-        if (m < 0.05) {
-            ctx.fillStyle = hash(i, j, 8) < 0.3 ? ACCENT : ink;
-            topEllipse(i, j, h, 0.26);
-            ctx.fill();
-        } else if (m < 0.09) {
-            ctx.strokeStyle = ink;
-            ctx.lineWidth = Math.max(1, TW / 26);
-            topEllipse(i, j, h, 0.3);
-            ctx.stroke();
-        } else if (m < 0.13) {
-            ctx.strokeStyle = ink;
-            ctx.lineWidth = Math.max(1, TW / 30);
-            ctx.beginPath();
-            for (let k = 0; k < 3; k++) {
-                const u = 0.3 + k * 0.2;
-                ctx.moveTo(sx(i + u, j + 0.15), sy(i + u, j + 0.15, h));
-                ctx.lineTo(sx(i + u, j + 0.85), sy(i + u, j + 0.85, h));
-            }
-            ctx.stroke();
-        } else if (m < 0.17) {
-            ctx.fillStyle = v.shadeStr;
-            topPoly(i, j, h, [0, 0, 1, 0, 1, 1]);
-        } else {
-            ctx.fillStyle = ink;
-            topPoly(i, j, h, [0.35, 0.35, 0.65, 0.35, 0.65, 0.65, 0.35, 0.65]);
-        }
-    }
-
-    function drawCell(i, j, level) {
+    function drawPlain(i, j, level, sw) {
         const h = level / 2;
-        const v = palette[level][inField(i, j) ? 1 : 0];
-
         const x0 = sx(i, j), y0 = sy(i, j, h);
         const hw = TW / 2, hh = TH / 2;
 
         // Right face (x = i + 1), hidden below neighbour (i + 1, j)
         const rightDrop = h - levelAt(i + 1, j) / 2;
         if (rightDrop > 0) {
-            ctx.fillStyle = v.rightStr;
+            ctx.fillStyle = sw.rightStr;
             quad(x0 + hw, y0 + hh, x0, y0 + TH,
                  x0, y0 + TH + rightDrop * ZU, x0 + hw, y0 + hh + rightDrop * ZU);
         }
         // Left face (y = j + 1), hidden below neighbour (i, j + 1)
         const leftDrop = h - levelAt(i, j + 1) / 2;
         if (leftDrop > 0) {
-            ctx.fillStyle = v.leftStr;
+            ctx.fillStyle = sw.leftStr;
             quad(x0 - hw, y0 + hh, x0, y0 + TH,
                  x0, y0 + TH + leftDrop * ZU, x0 - hw, y0 + hh + leftDrop * ZU);
         }
 
-        ctx.fillStyle = v.topStr;
+        ctx.fillStyle = sw.topStr;
         quad(x0, y0, x0 + hw, y0 + hh, x0, y0 + TH, x0 - hw, y0 + hh);
+    }
 
-        // Recently visited tiles carry a flat accent square that shrinks in steps
-        const visited = trail.get(i * 65536 + j);
-        if (visited !== undefined) {
-            const age = (clock - visited) / TRAIL_LIFE;
-            const r = Math.ceil((1 - age) * 4) / 4 * 0.32;
-            if (r > 0) {
-                ctx.fillStyle = ACCENT;
-                topPoly(i, j, h, [0.5 - r, 0.5 - r, 0.5 + r, 0.5 - r, 0.5 + r, 0.5 + r, 0.5 - r, 0.5 + r]);
+    // 3x3 mosaic of little columns that re-samples itself every few seconds
+    function drawVoxel(i, j, level, sw) {
+        const h = level / 2, base = h - 0.4;
+        const floor = floorOf(i, j, h);
+        if (base > floor) block(i, j, i + 1, j + 1, floor, base, sw);
+
+        const step = Math.floor(clock / 2.2 + hash(i, j, 16) * 10);
+        for (let d = 0; d <= 4; d++) {
+            for (let a = Math.max(0, d - 2); a <= Math.min(2, d); a++) {
+                const b = d - a;
+                const r = hash(i * 3 + a, j * 3 + b, 20 + step);
+                const zt = h - Math.floor(r * 3) * 0.1;
+                const pick = hash(i * 3 + a, j * 3 + b, 40 + step);
+                const s = pick < 0.6 ? sw : swatches[(sw.band + (pick < 0.85 ? 1 : 2)) % 3];
+                block(i + a / 3, j + b / 3, i + (a + 1) / 3, j + (b + 1) / 3, base, zt, s);
             }
-        } else {
-            drawMotif(i, j, h, v);
         }
     }
+
+    // Thin slabs with breathing gaps, each nudged off-axis like a stack of network layers
+    function drawLayers(i, j, level, sw) {
+        const h = level / 2;
+        const floor = floorOf(i, j, h);
+        const phase = hash(i, j, 17) * 6.28;
+        const slabs = [];
+        let zt = h;
+        for (let k = 0; (k === 0 || zt > floor) && k < 8; k++) {
+            const zb = k === 0 ? zt - 0.26 : Math.max(floor, zt - 0.26);
+            const sway = k === 0 ? 0 : (k % 2 ? 1 : -1) * 0.06 * Math.sin(clock * 0.9 + phase);
+            slabs.push([zb, zt, sway, k]);
+            zt = zb - (0.1 + 0.06 * Math.sin(clock * 1.6 + phase + k * 0.8));
+        }
+        const alt = altOf(i, j, sw);
+        for (let n = slabs.length - 1; n >= 0; n--) {
+            const [zb, top, sway, k] = slabs[n];
+            block(i + sway, j - sway, i + 1 + sway, j + 1 - sway, zb, top, k % 3 === 2 ? alt : sw);
+        }
+    }
+
+    // Ordered-dither top whose density slowly breathes between two colours
+    function drawDither(i, j, level, sw) {
+        drawPlain(i, j, level, sw);
+        const h = level / 2;
+        const alt = altOf(i, j, sw);
+        const cycle = Math.floor(clock * 2 + hash(i, j, 18) * 32) % 32;
+        const t = cycle < 16 ? cycle : 32 - cycle;
+        ctx.fillStyle = alt.topStr;
+        for (let b = 0; b < 4; b++) {
+            for (let a = 0; a < 4; a++) {
+                if (BAYER[b * 4 + a] < t) topQuad(i + a / 4, j + b / 4, i + (a + 1) / 4, j + (b + 1) / 4, h);
+            }
+        }
+    }
+
+    // Faces cut into bands that occasionally slip sideways
+    function drawGlitch(i, j, level, sw) {
+        const h = level / 2;
+        const floor = floorOf(i, j, h);
+        const alt = altOf(i, j, sw);
+        const step = Math.floor(clock * 5);
+        const live = hash(i, j, 60 + step) < 0.3;
+
+        // Bottom band first so each band's top hides under the one above
+        const bands = Math.ceil((h - floor) / 0.25);
+        for (let k = bands - 1; k >= 0; k--) {
+            const zt = h - k * 0.25, zb = Math.max(floor, zt - 0.25);
+            const r = hash(i + k * 7, j, 80 + step);
+            const slip = live && r < 0.5 ? (r - 0.25) * TW * 0.5 : 0;
+            const s = live && r > 0.85 ? alt : sw;
+            ctx.save();
+            ctx.translate(slip, 0);
+            block(i, j, i + 1, j + 1, zb, zt, s);
+            ctx.restore();
+        }
+        ctx.fillStyle = sw.topStr;
+        topQuad(i, j, i + 1, j + 1, h);
+    }
+
+    // Outline only - a tile the model hasn't filled in yet
+    function drawWire(i, j, level, sw) {
+        const h = level / 2;
+        const floor = floorOf(i, j, h);
+        ctx.fillStyle = 'rgba(224,210,180,0.08)';
+        topQuad(i, j, i + 1, j + 1, h);
+
+        ctx.strokeStyle = rgb(SAND, 0.85);
+        ctx.lineWidth = Math.max(1, TW / 48);
+        ctx.beginPath();
+        const corner = (x, y, z) => [sx(x, y), sy(x, y, z)];
+        const ring = [[i, j], [i + 1, j], [i + 1, j + 1], [i, j + 1]];
+        for (const z of [h, floor]) {
+            ring.forEach(([x, y], n) => {
+                const [px, py] = corner(x, y, z);
+                if (n === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            });
+            ctx.closePath();
+        }
+        for (const [x, y] of [[i + 1, j], [i + 1, j + 1], [i, j + 1]]) {
+            ctx.moveTo(...corner(x, y, h));
+            ctx.lineTo(...corner(x, y, floor));
+        }
+        // Inner grid
+        ctx.moveTo(...corner(i + 0.5, j, h)); ctx.lineTo(...corner(i + 0.5, j + 1, h));
+        ctx.moveTo(...corner(i, j + 0.5, h)); ctx.lineTo(...corner(i + 1, j + 0.5, h));
+        ctx.stroke();
+    }
+
+    // Low-poly top: four triangles fanned from the centre
+    function drawFacet(i, j, level, sw) {
+        drawPlain(i, j, level, sw);
+        const h = level / 2;
+        const alt = altOf(i, j, sw);
+        const cx = sx(i + 0.5, j + 0.5), cy = sy(i + 0.5, j + 0.5, h);
+        const pts = [[i, j], [i + 1, j], [i + 1, j + 1], [i, j + 1]];
+        const fills = [sw.shadeStr, alt.topStr, sw.topStr, alt.shadeStr];
+        const spin = Math.floor(hash(i, j, 19) * 4);
+        for (let n = 0; n < 4; n++) {
+            const [ax, ay] = pts[n], [bx, by] = pts[(n + 1) % 4];
+            ctx.fillStyle = fills[(n + spin) % 4];
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(sx(ax, ay), sy(ax, ay, h));
+            ctx.lineTo(sx(bx, by), sy(bx, by, h));
+            ctx.closePath();
+            ctx.fill();
+        }
+    }
+
+    // A slab hovering over its own tile, casting a flat shadow
+    function drawFloat(i, j, level, sw) {
+        drawPlain(i, j, level, sw);
+        const h = level / 2;
+        const lift = floatLift(i, j);
+        const r = 0.36 - (lift - 0.7) * 0.4;
+        ctx.fillStyle = 'rgba(0,0,0,0.18)';
+        topQuad(i + 0.5 - r, j + 0.5 - r, i + 0.5 + r, j + 0.5 + r, h);
+        block(i + 0.04, j + 0.04, i + 0.96, j + 0.96, h + lift - 0.3, h + lift, altOf(i, j, sw));
+    }
+
+    const DRAW = [drawPlain, drawVoxel, drawLayers, drawDither, drawGlitch, drawWire, drawFacet, drawFloat];
 
     function draw() {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -313,7 +440,7 @@
         const d0 = Math.floor((camX - W / 2) / halfW) - 2;
         const d1 = Math.ceil((camX + W / 2) / halfW) + 2;
         const s0 = Math.floor((camY - H / 2) / halfH) - 3;
-        const s1 = Math.ceil((camY + H / 2 + (MAX_LEVEL / 2) * ZU) / halfH) + 2;
+        const s1 = Math.ceil((camY + H / 2 + (MAX_LEVEL / 2 + 1) * ZU) / halfH) + 2;
 
         // The climber is drawn right after the later of its two cells so nearer blocks occlude it
         const cs = Math.max(climber.fi + climber.fj, climber.ti + climber.tj);
@@ -325,8 +452,8 @@
             for (let d = d0; d <= d1; d++) {
                 if (((s + d) & 1) !== 0) continue;
                 const i = (s + d) >> 1, j = (s - d) >> 1;
-                const level = levelAt(i, j);
-                if (rowTop - (level / 2) * ZU <= H) drawCell(i, j, level);
+                const cell = cellAt(i, j), level = cell & 31;
+                if (rowTop - (level / 2 + 1) * ZU <= H) DRAW[cell >> 5](i, j, level, palette[level]);
                 if (s === cs && d === cd) drawClimber();
             }
         }
@@ -431,13 +558,13 @@
         resize();
         if (!palette.length) buildPalette();
 
-        // Start on a random raised tile and snap the camera to it
+        // Start on a random tile and snap the camera to it
         const i = Math.floor(Math.random() * 2000) - 1000;
         const j = Math.floor(Math.random() * 2000) - 1000;
         climber.fi = climber.ti = i;
         climber.fj = climber.tj = j;
-        climber.fh = climber.th = levelAt(i, j) / 2;
         climber.t = 1;
+        climber.land = 0;
         climber.pause = 0.6;
         updateClimber(0);
         camera.x = (climber.x - climber.y) * TW / 2;
@@ -463,7 +590,7 @@
     function clearMemory() {
         stopAnimation();
         trail.clear();
-        heightCache.clear();
+        cellCache.clear();
     }
 
     if (canvas.classList.contains('active')) {
