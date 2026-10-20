@@ -13,20 +13,21 @@
 
     const ctx = canvas.getContext('2d', { alpha: false });
 
-    // Palette - dusk purple lowlands up to warm sand peaks
-    const LOW = [52, 44, 64];
-    const HIGH = [222, 196, 160];
-    const GLOW = [255, 170, 110];
-    const BG_TOP = '#16131b';
-    const BG_BOTTOM = '#2a2230';
+    // Flat palette - discrete height bands, dusk plum lowlands up to sand peaks
+    const BANDS = [[43, 36, 51], [61, 50, 71], [90, 74, 94], [138, 106, 106], [196, 154, 122], [226, 207, 174]];
+    const BAND_LEVELS = [0, 2, 4, 6, 9, 13];   // first level of each band
+    const FIELD = [[111, 143, 166], [74, 98, 120]]; // steel-blue colour fields, light / dark
+    const ACCENT = '#ff8a5c';
+    const BONE = '#e9e4d8';
+    const INK = '#1b1820';
+    const BG = '#16131b';
 
     const MAX_LEVEL = 22;      // heights are stored in half-cell levels
     const MAX_CLIMB = 3;       // levels the cube can hop up
-    const TRAIL_LIFE = 5;      // seconds a visited tile glows
+    const TRAIL_LIFE = 5;      // seconds a visited tile stays marked
 
     let W = 0, H = 0, dpr = 1;
     let TW = 48, TH = 24, ZU = 29; // tile width, tile height, px per height unit
-    let bgGradient = null, vignette = null;
 
     const camera = { x: 0, y: 0 };
     const drag = { active: false, lastX: 0, lastY: 0, x: 0, y: 0 };
@@ -81,24 +82,32 @@
         return level;
     }
 
+    function swatch(c, band) {
+        return {
+            band: band,
+            topStr: rgb(c, 1),
+            shadeStr: rgb(c, 0.82),
+            leftStr: rgb(c, 0.72),
+            rightStr: rgb(c, 0.52)
+        };
+    }
+
+    // palette[level] = [plain, colour-field]
     function buildPalette() {
         palette = [];
         for (let l = 0; l <= MAX_LEVEL; l++) {
-            const t = Math.pow(l / MAX_LEVEL, 0.7);
-            const base = LOW.map((c, k) => c + (HIGH[k] - c) * t);
-            const variants = [];
-            for (let v = 0; v < 4; v++) {
-                const jitter = 0.94 + v * 0.04;
-                const top = base.map(c => c * jitter);
-                variants.push({
-                    top: top,
-                    topStr: rgb(top, 1),
-                    leftStr: rgb(top, 0.72),
-                    rightStr: rgb(top, 0.52)
-                });
-            }
-            palette.push(variants);
+            let band = 0;
+            while (band < BANDS.length - 1 && l >= BAND_LEVELS[band + 1]) band++;
+            palette.push([
+                swatch(BANDS[band], band),
+                swatch(FIELD[band >= 3 ? 0 : 1], band)
+            ]);
         }
+    }
+
+    // Large, hard-edged patches where the terrain switches to the field colour
+    function inField(i, j) {
+        return valueNoise(i / 23, j / 23, 7) > 0.74;
     }
 
     function rgb(c, k) {
@@ -161,14 +170,14 @@
         const y0 = climber.y - s / 2, y1 = climber.y + s / 2;
         const zb = climber.z, zt = climber.z + s * 0.85;
 
-        // Soft warm light on the surface beneath
+        // Flat target ring on the surface beneath
         const ground = climber.t < 1 ? Math.max(climber.fh, climber.th) : climber.th;
         const lx = sx(climber.x, climber.y), ly = sy(climber.x, climber.y, ground);
-        const glow = ctx.createRadialGradient(lx, ly, 0, lx, ly, TW * 0.9);
-        glow.addColorStop(0, 'rgba(255,170,110,0.35)');
-        glow.addColorStop(1, 'rgba(255,170,110,0)');
-        ctx.fillStyle = glow;
-        ctx.fillRect(lx - TW, ly - TW, TW * 2, TW * 2);
+        ctx.strokeStyle = ACCENT;
+        ctx.lineWidth = Math.max(1, TW / 28);
+        ctx.beginPath();
+        ctx.ellipse(lx, ly, TW * 0.42, TH * 0.42, 0, 0, Math.PI * 2);
+        ctx.stroke();
 
         // Top
         ctx.fillStyle = '#2b2331';
@@ -204,9 +213,60 @@
 
     // ---- Rendering ----
 
+    // Iso-plane helpers: (u, v) are cell-local coords on the top face at height h
+    function topPoly(i, j, h, pts) {
+        ctx.beginPath();
+        for (let n = 0; n < pts.length; n += 2) {
+            const x = sx(i + pts[n], j + pts[n + 1]), y = sy(i + pts[n], j + pts[n + 1], h);
+            if (n === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    function topEllipse(i, j, h, r) {
+        ctx.beginPath();
+        ctx.ellipse(sx(i + 0.5, j + 0.5), sy(i + 0.5, j + 0.5, h),
+                    r * Math.SQRT2 * TW / 2, r * Math.SQRT2 * TH / 2, 0, 0, Math.PI * 2);
+    }
+
+    // Sparse geometric marks on tile tops
+    function drawMotif(i, j, h, v) {
+        const m = hash(i, j, 6);
+        if (m > 0.2) return;
+        const ink = v.band >= 3 ? INK : BONE;
+
+        if (m < 0.05) {
+            ctx.fillStyle = hash(i, j, 8) < 0.3 ? ACCENT : ink;
+            topEllipse(i, j, h, 0.26);
+            ctx.fill();
+        } else if (m < 0.09) {
+            ctx.strokeStyle = ink;
+            ctx.lineWidth = Math.max(1, TW / 26);
+            topEllipse(i, j, h, 0.3);
+            ctx.stroke();
+        } else if (m < 0.13) {
+            ctx.strokeStyle = ink;
+            ctx.lineWidth = Math.max(1, TW / 30);
+            ctx.beginPath();
+            for (let k = 0; k < 3; k++) {
+                const u = 0.3 + k * 0.2;
+                ctx.moveTo(sx(i + u, j + 0.15), sy(i + u, j + 0.15, h));
+                ctx.lineTo(sx(i + u, j + 0.85), sy(i + u, j + 0.85, h));
+            }
+            ctx.stroke();
+        } else if (m < 0.17) {
+            ctx.fillStyle = v.shadeStr;
+            topPoly(i, j, h, [0, 0, 1, 0, 1, 1]);
+        } else {
+            ctx.fillStyle = ink;
+            topPoly(i, j, h, [0.35, 0.35, 0.65, 0.35, 0.65, 0.65, 0.35, 0.65]);
+        }
+    }
+
     function drawCell(i, j, level) {
         const h = level / 2;
-        const v = palette[level][(hash(i, j, 5) * 4) | 0];
+        const v = palette[level][inField(i, j) ? 1 : 0];
 
         const x0 = sx(i, j), y0 = sy(i, j, h);
         const hw = TW / 2, hh = TH / 2;
@@ -226,20 +286,26 @@
                  x0, y0 + TH + leftDrop * ZU, x0 - hw, y0 + hh + leftDrop * ZU);
         }
 
-        // Top, warmed if the climber passed through recently
+        ctx.fillStyle = v.topStr;
+        quad(x0, y0, x0 + hw, y0 + hh, x0, y0 + TH, x0 - hw, y0 + hh);
+
+        // Recently visited tiles carry a flat accent square that shrinks in steps
         const visited = trail.get(i * 65536 + j);
         if (visited !== undefined) {
-            const k = Math.exp(-(clock - visited) / (TRAIL_LIFE / 3)) * 0.45;
-            ctx.fillStyle = rgb(v.top.map((c, n) => c + (GLOW[n] - c) * k), 1);
+            const age = (clock - visited) / TRAIL_LIFE;
+            const r = Math.ceil((1 - age) * 4) / 4 * 0.32;
+            if (r > 0) {
+                ctx.fillStyle = ACCENT;
+                topPoly(i, j, h, [0.5 - r, 0.5 - r, 0.5 + r, 0.5 - r, 0.5 + r, 0.5 + r, 0.5 - r, 0.5 + r]);
+            }
         } else {
-            ctx.fillStyle = v.topStr;
+            drawMotif(i, j, h, v);
         }
-        quad(x0, y0, x0 + hw, y0 + hh, x0, y0 + TH, x0 - hw, y0 + hh);
     }
 
     function draw() {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.fillStyle = bgGradient;
+        ctx.fillStyle = BG;
         ctx.fillRect(0, 0, W, H);
 
         const camX = camera.x + drag.x, camY = camera.y + drag.y;
@@ -264,9 +330,6 @@
                 if (s === cs && d === cd) drawClimber();
             }
         }
-
-        ctx.fillStyle = vignette;
-        ctx.fillRect(0, 0, W, H);
     }
 
     function update(dt) {
@@ -302,14 +365,6 @@
         TW = Math.max(32, Math.min(64, Math.round(Math.min(W, H) / 16)));
         TH = TW / 2;
         ZU = TH * 1.2;
-
-        bgGradient = ctx.createLinearGradient(0, 0, 0, H);
-        bgGradient.addColorStop(0, BG_TOP);
-        bgGradient.addColorStop(1, BG_BOTTOM);
-
-        vignette = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.hypot(W, H) * 0.6);
-        vignette.addColorStop(0, 'rgba(22,19,27,0)');
-        vignette.addColorStop(1, 'rgba(22,19,27,0.85)');
     }
 
     function animate(now) {
